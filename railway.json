@@ -1,0 +1,6 @@
+{
+  "deploy": {
+    "startCommand": "node backend/server.js",
+    "healthcheckPath": "/api/health"
+  }
+}
