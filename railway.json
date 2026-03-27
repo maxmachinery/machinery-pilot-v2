@@ -1,0 +1,11 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "buildCommand": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend"
+  },
+  "deploy": {
+    "startCommand": "node backend/server.js",
+    "healthcheckPath": "/api/oem/configs",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

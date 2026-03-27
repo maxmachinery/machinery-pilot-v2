@@ -379,6 +379,13 @@ button, input, textarea, select { font-family: 'Barlow', sans-serif; }
   background: #F5F3FF; color: #7C3AED; border: 1px solid #DDD6FE;
 }
 
+/* ══ Library table row hover ════════════════════════════════════ */
+.lib-row { transition: background .12s; }
+.lib-row:hover { background: rgba(0,180,240,.03); }
+
+/* ══ Claim layout 2-col (when no step rail needed on mobile) ════ */
+.meta-grid { display: grid; grid-template-columns: repeat(2,1fr); gap:12px; }
+
 /* ══ Responsive ═════════════════════════════════════════════════ */
 @media (max-width: 860px) {
   :root { --sidebar-w: 0px; }

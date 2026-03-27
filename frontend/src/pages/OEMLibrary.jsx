@@ -1,242 +1,240 @@
 import { useState, useEffect, useRef } from 'react'
 
 const DOC_SLOTS = [
-  { type: 'warranty_policy',  icon: '📋', label: 'Warranty Policy',    desc: 'Rules, claim requirements, pre-auth thresholds' },
-  { type: 'portal_structure', icon: '🔧', label: 'Portal Structure',   desc: 'Portal field definitions, char limits, required fields' },
-  { type: 'machine_handbook', icon: '📖', label: 'Machine Handbook',   desc: 'Repair procedures, torque specs, removal steps' },
-  { type: 'historic_claims',  icon: '✅', label: 'Historic Claims',    desc: 'Previously approved claims — teaches tone and detail' },
+  { type: 'warranty_policy',  label: 'Warranty Policy',  short: 'Policy'  },
+  { type: 'portal_structure', label: 'Portal Structure', short: 'Portal'  },
+  { type: 'machine_handbook', label: 'Machine Handbook', short: 'Handbook'},
+  { type: 'historic_claims',  label: 'Historic Claims',  short: 'Historic'},
 ]
 
 export default function OEMLibrary({ focusOemId, onStartClaim }) {
-  const [configs,    setConfigs]    = useState([])
+  const [rows,       setRows]       = useState([])
   const [loading,    setLoading]    = useState(true)
-  const [selected,   setSelected]   = useState(null) // OEM in detail view
   const [showAdd,    setShowAdd]    = useState(false)
+  const [expandedId, setExpandedId] = useState(null) // machineId with detail open
 
-  useEffect(() => {
-    loadConfigs()
-  }, [])
+  useEffect(() => { loadLibrary() }, [])
 
-  useEffect(() => {
-    if (focusOemId && configs.length) {
-      const found = configs.find(c => c.id === focusOemId)
-      if (found) setSelected(found)
-    }
-  }, [focusOemId, configs])
-
-  function loadConfigs() {
+  function loadLibrary() {
     setLoading(true)
-    fetch('/api/oem/configs')
+    fetch('/api/library')
       .then(r => r.json())
-      .then(data => { setConfigs(data); setLoading(false) })
+      .then(data => { setRows(data); setLoading(false) })
       .catch(() => setLoading(false))
   }
 
-  async function refreshSelected(id) {
-    const r = await fetch(`/api/oem/${id}`)
-    const data = await r.json()
-    setSelected(data)
-    setConfigs(prev => prev.map(c => c.id === id ? { ...c, documents: data.documents } : c))
-  }
-
-  const isFullyConfigured = (cfg) =>
-    DOC_SLOTS.every(s => (cfg.documents || []).some(d => d.doc_type === s.type))
+  function handleDocUploaded() { loadLibrary() }
+  function handleDocDeleted()  { loadLibrary() }
 
   if (loading) return (
-    <div className="loader"><div className="spinner" /><div className="loader-title">Loading OEM library…</div></div>
+    <div className="loader"><div className="spinner" /><div className="loader-title">Loading library…</div></div>
   )
-
-  if (selected) {
-    return (
-      <OEMDetailView
-        oem={selected}
-        onBack={() => setSelected(null)}
-        onRefresh={() => refreshSelected(selected.id)}
-        onStartClaim={() => onStartClaim(selected)}
-      />
-    )
-  }
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
         <div>
-          <h2 style={{ fontSize: 16, color: 'var(--navy)', fontFamily: 'Barlow, sans-serif', fontWeight: 600 }}>
-            {configs.length} OEM configuration{configs.length !== 1 ? 's' : ''}
-          </h2>
-          <p style={{ fontSize: 13, color: 'var(--grey-muted)' }}>
-            Each OEM can have up to 4 reference documents. More documents = better enrichment.
-          </p>
+          <span style={{ fontSize:15, fontWeight:600, color:'var(--navy)' }}>
+            {rows.length} machine configuration{rows.length !== 1 ? 's' : ''}
+          </span>
+          <span style={{ fontSize:13, color:'var(--grey-muted)', marginLeft:12 }}>
+            Each row is a unique OEM + Machine combination
+          </span>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add OEM</button>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Documents</button>
       </div>
 
-      {configs.length === 0 ? (
-        <div className="empty">
-          No OEM configurations yet.<br />
-          <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setShowAdd(true)}>
-            Upload Warranty Policy to get started
+      {rows.length === 0 ? (
+        <div className="empty" style={{ background:'var(--white)', borderRadius:10, border:'1px solid var(--grey-border)' }}>
+          No documents yet.<br />
+          <button className="btn btn-primary" style={{ marginTop:14 }} onClick={() => setShowAdd(true)}>
+            Upload first document
           </button>
         </div>
       ) : (
-        <div className="oem-grid">
-          {configs.map(cfg => (
-            <OEMCard
-              key={cfg.id}
-              cfg={cfg}
-              isFull={isFullyConfigured(cfg)}
-              onClick={() => setSelected(cfg)}
-            />
-          ))}
+        <div style={{ background:'var(--white)', borderRadius:10, border:'1px solid var(--grey-border)', overflow:'hidden' }}>
+          {/* Table header */}
+          <div style={{
+            display:'grid',
+            gridTemplateColumns:'160px 180px repeat(4,1fr) 100px',
+            padding:'9px 16px',
+            background:'var(--grey-bg)',
+            borderBottom:'2px solid var(--grey-border)',
+            fontSize:11, fontWeight:700, color:'var(--grey-muted)',
+            textTransform:'uppercase', letterSpacing:'.06em',
+            gap:8,
+          }}>
+            <span>OEM</span>
+            <span>Machine</span>
+            {DOC_SLOTS.map(s => <span key={s.type}>{s.short}</span>)}
+            <span></span>
+          </div>
+
+          {rows.map((row, i) => {
+            const isExpanded = expandedId === row.machineId
+            const prevRow    = rows[i - 1]
+            const sameOem    = prevRow && prevRow.oemId === row.oemId
+
+            return (
+              <div key={row.machineId}>
+                {/* Main row */}
+                <div
+                  style={{
+                    display:'grid',
+                    gridTemplateColumns:'160px 180px repeat(4,1fr) 100px',
+                    padding:'10px 16px',
+                    borderBottom: isExpanded ? 'none' : '1px solid var(--grey-border)',
+                    alignItems:'center',
+                    gap:8,
+                    cursor:'pointer',
+                    transition:'background .12s',
+                    background: isExpanded ? 'rgba(0,180,240,.04)' : 'transparent',
+                  }}
+                  onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = 'rgba(0,180,240,.03)' }}
+                  onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent' }}
+                  onClick={() => setExpandedId(isExpanded ? null : row.machineId)}
+                >
+                  {/* OEM — show name only for first row of each OEM */}
+                  <div style={{ fontSize:14, fontWeight:600, color: sameOem ? 'transparent' : 'var(--navy)', userSelect:'none' }}>
+                    {sameOem ? '└' : row.oemName}
+                  </div>
+
+                  {/* Machine */}
+                  <div style={{ fontSize:13, color:'var(--text)', fontWeight:500 }}>
+                    {row.machineModel}
+                  </div>
+
+                  {/* Doc status cells */}
+                  {DOC_SLOTS.map(s => {
+                    const doc = (row.documents || []).find(d => d.doc_type === s.type)
+                    return (
+                      <div key={s.type}>
+                        {doc
+                          ? <span title={doc.filename} style={{ color:'var(--ok)', fontWeight:700, fontSize:13 }}>✓</span>
+                          : <span style={{ color:'var(--grey-border)', fontSize:16 }}>—</span>
+                        }
+                      </div>
+                    )
+                  })}
+
+                  {/* Actions */}
+                  <div style={{ display:'flex', gap:5 }} onClick={e => e.stopPropagation()}>
+                    <button
+                      className="btn btn-primary btn-xs"
+                      onClick={() => onStartClaim(row)}
+                      title="Start new claim with this machine"
+                    >
+                      Claim
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expanded detail row */}
+                {isExpanded && (
+                  <MachineDetailRow
+                    row={row}
+                    onDocUploaded={handleDocUploaded}
+                    onDocDeleted={handleDocDeleted}
+                    onClose={() => setExpandedId(null)}
+                    onStartClaim={() => onStartClaim(row)}
+                  />
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
+      {/* Legend */}
+      {rows.length > 0 && (
+        <div style={{ marginTop:12, fontSize:12, color:'var(--grey-muted)', display:'flex', gap:16 }}>
+          <span><span style={{ color:'var(--ok)', fontWeight:700 }}>✓</span> Document uploaded</span>
+          <span><span style={{ color:'var(--grey-border)' }}>—</span> Not uploaded</span>
+          <span>Click any row to manage its documents</span>
+        </div>
+      )}
+
+      {/* Add Documents modal */}
       {showAdd && (
-        <AddOEMModal
+        <AddDocModal
+          existingRows={rows}
           onClose={() => setShowAdd(false)}
-          onAdded={(cfg) => {
-            setConfigs(prev => [cfg, ...prev])
-            setShowAdd(false)
-            setSelected(cfg)
-          }}
+          onUploaded={() => { loadLibrary(); setShowAdd(false) }}
         />
       )}
     </>
   )
 }
 
-function OEMCard({ cfg, isFull, onClick }) {
-  const docs     = cfg.documents || []
-  const initials = cfg.name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-
+// ── Expanded detail row ──────────────────────────────────────────────────────
+function MachineDetailRow({ row, onDocUploaded, onDocDeleted, onClose, onStartClaim }) {
   return (
-    <div className="oem-card" onClick={onClick}>
-      <div className="oem-card-head">
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-          <div className="oem-logo-placeholder">{initials}</div>
-          <div>
-            <div className="oem-card-name">{cfg.name}</div>
-            {cfg.brand && cfg.brand !== cfg.name &&
-              <div className="oem-card-brand">{cfg.brand}</div>}
-          </div>
+    <div style={{
+      background:'var(--grey-bg)',
+      borderBottom:'1px solid var(--grey-border)',
+      padding:'16px 20px',
+    }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <div>
+          <span style={{ fontFamily:'Barlow Condensed,sans-serif', fontWeight:700, fontSize:18, color:'var(--navy)' }}>
+            {row.oemName} — {row.machineModel}
+          </span>
+          <span style={{ fontSize:12, color:'var(--grey-muted)', marginLeft:10 }}>
+            {(row.job_card_fields || []).length} job card fields · {(row.portal_fields || []).length} portal fields
+          </span>
         </div>
-        <span className={isFull ? 'oem-badge-full' : 'oem-badge-part'}>
-          {isFull ? '✓ Fully set up' : `${docs.length}/4 docs`}
-        </span>
+        <div style={{ display:'flex', gap:8 }}>
+          <button className="btn btn-primary btn-sm" onClick={onStartClaim}>Start Claim →</button>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕ Close</button>
+        </div>
       </div>
 
-      <div className="oem-doc-status">
-        {DOC_SLOTS.map(s => {
-          const present = docs.some(d => d.doc_type === s.type)
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
+        {DOC_SLOTS.map(slot => {
+          const existing = (row.documents || []).find(d => d.doc_type === slot.type)
           return (
-            <div key={s.type} className={`doc-chip ${present ? 'present' : 'missing'}`}>
-              {s.icon} {present ? s.label : s.label}
-            </div>
+            <DocCell
+              key={slot.type}
+              slot={slot}
+              existing={existing}
+              oemName={row.oemName}
+              machineName={row.machineModel}
+              onUploaded={onDocUploaded}
+              onDeleted={onDocDeleted}
+            />
           )
         })}
       </div>
 
-      <div className="oem-card-stats">
-        {(cfg.job_card_fields || []).length} job card fields ·{' '}
-        {(cfg.portal_fields || []).length} portal fields ·{' '}
-        {(cfg.policy_rules || []).length} rules
-      </div>
+      {(row.policy_rules || []).length > 0 && (
+        <div style={{ marginTop:14 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:'var(--grey-muted)', textTransform:'uppercase', letterSpacing:'.07em', marginBottom:6 }}>
+            Policy Rules ({row.policy_rules.length})
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {row.policy_rules.slice(0, 4).map((r, i) => (
+              <div key={i} style={{ fontSize:12, color:'var(--text)', display:'flex', gap:8 }}>
+                <span style={{ color:'var(--cyan)', fontWeight:700 }}>•</span>{r}
+              </div>
+            ))}
+            {row.policy_rules.length > 4 && (
+              <div style={{ fontSize:12, color:'var(--grey-muted)', fontStyle:'italic' }}>
+                + {row.policy_rules.length - 4} more
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function OEMDetailView({ oem, onBack, onRefresh, onStartClaim }) {
-  const docs = oem.documents || []
-
-  return (
-    <>
-      <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button className="btn btn-ghost btn-sm" onClick={onBack}>← Library</button>
-        <div>
-          <span style={{ fontFamily: 'Barlow Condensed, sans-serif', fontWeight: 700, fontSize: 22, color: 'var(--navy)' }}>
-            {oem.name}
-          </span>
-          {oem.brand && oem.brand !== oem.name &&
-            <span style={{ fontSize: 13, color: 'var(--grey-muted)', marginLeft: 10 }}>{oem.brand}</span>}
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={onStartClaim}>Start New Claim →</button>
-        </div>
-      </div>
-
-      <div className="card">
-        <h3 className="sec-title" style={{ marginBottom: 14 }}>Reference Documents</h3>
-        <div className="doc-slots">
-          {DOC_SLOTS.map(slot => {
-            const existing = docs.find(d => d.doc_type === slot.type)
-            return (
-              <DocSlot
-                key={slot.type}
-                slot={slot}
-                existing={existing}
-                oemId={oem.id}
-                onUploaded={onRefresh}
-                onDeleted={onRefresh}
-              />
-            )
-          })}
-        </div>
-      </div>
-
-      {/* Config preview */}
-      {(oem.job_card_fields || []).length > 0 && (
-        <div className="card">
-          <h3 className="sec-title">Job Card Fields ({oem.job_card_fields.length})</h3>
-          <div className="fgrid">
-            <div className="frow head"><span>Field</span><span>Description</span><span>Required</span></div>
-            {oem.job_card_fields.map(f => (
-              <div key={f.fieldId} className="frow">
-                <span className="fname">{f.name}</span>
-                <span style={{ fontSize: 13, color: 'var(--text)' }}>{f.description || '—'}</span>
-                <span className={`req-badge ${f.required ? 'y' : 'n'}`}>{f.required ? 'Yes' : 'Optional'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {(oem.portal_fields || []).length > 0 && (
-        <div className="card">
-          <h3 className="sec-title">Portal Fields ({oem.portal_fields.length})</h3>
-          <div className="fgrid">
-            <div className="frow head"><span>Field</span><span>Description</span><span>Max chars</span></div>
-            {oem.portal_fields.map(f => (
-              <div key={f.fieldId} className="frow">
-                <span className="fname">{f.name || f.fieldId}</span>
-                <span style={{ fontSize: 13, color: 'var(--text)' }}>{f.description || '—'}</span>
-                <span style={{ fontSize: 12, color: 'var(--grey-muted)' }}>{f.maxChars || '—'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {(oem.policy_rules || []).length > 0 && (
-        <div className="card">
-          <h3 className="sec-title">Policy Rules ({oem.policy_rules.length})</h3>
-          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 7 }}>
-            {oem.policy_rules.map((r, i) => (
-              <li key={i} style={{ display: 'flex', gap: 9, fontSize: 13, lineHeight: 1.5 }}>
-                <span style={{ color: 'var(--cyan)', fontWeight: 700, flexShrink: 0 }}>•</span>
-                {r}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </>
-  )
-}
-
-function DocSlot({ slot, existing, oemId, onUploaded, onDeleted }) {
+// ── Per-doc slot cell in detail row ─────────────────────────────────────────
+function DocCell({ slot, existing, oemName, machineName, onUploaded, onDeleted }) {
   const [uploading, setUploading] = useState(false)
   const [error,     setError]     = useState(null)
-  const [dragOver,  setDragOver]  = useState(false)
+  const [drag,      setDrag]      = useState(false)
   const fileRef = useRef()
 
   async function handleFile(file) {
@@ -245,126 +243,199 @@ function DocSlot({ slot, existing, oemId, onUploaded, onDeleted }) {
     try {
       const fd = new FormData()
       fd.append('pdf', file)
-      fd.append('docType', slot.type)
-      const r = await fetch(`/api/oem/${oemId}/documents`, { method: 'POST', body: fd })
+      fd.append('oemName',     oemName)
+      fd.append('machineName', machineName)
+      fd.append('docType',     slot.type)
+      const r = await fetch('/api/documents/upload', { method:'POST', body:fd })
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Upload failed') }
       onUploaded()
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setUploading(false)
-    }
+    } catch(e) { setError(e.message) }
+    finally { setUploading(false) }
   }
 
   async function handleDelete() {
     if (!existing) return
-    await fetch(`/api/oem/documents/${existing.id}`, { method: 'DELETE' })
+    await fetch(`/api/documents/${existing.id}`, { method:'DELETE' })
     onDeleted()
   }
 
-  if (uploading) return (
-    <div className={`doc-slot`} style={{ opacity: .7 }}>
-      <span className="doc-slot-icon">{slot.icon}</span>
-      <div className="doc-slot-info">
-        <div className="doc-slot-title">{slot.label}</div>
-        <div className="doc-slot-sub">Uploading and extracting content…</div>
-      </div>
-      <div className="spinner" style={{ width: 22, height: 22, borderWidth: 2 }} />
-    </div>
-  )
-
   return (
     <div
-      className={`doc-slot ${existing ? 'uploaded' : ''} ${dragOver ? 'over' : ''}`}
-      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={e => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]) }}
+      style={{
+        background: existing ? 'rgba(22,163,74,.06)' : 'var(--white)',
+        border: `1.5px ${drag ? 'solid' : 'dashed'} ${existing ? '#86EFAC' : drag ? 'var(--cyan)' : 'var(--grey-border)'}`,
+        borderRadius:8, padding:'12px',
+        transition:'all .15s',
+      }}
+      onDragOver={e => { e.preventDefault(); setDrag(true) }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]) }}
     >
-      <input ref={fileRef} type="file" accept="application/pdf" style={{ display: 'none' }}
+      <input ref={fileRef} type="file" accept="application/pdf" style={{ display:'none' }}
         onChange={e => handleFile(e.target.files[0])} />
-      <span className="doc-slot-icon">{existing ? '✅' : slot.icon}</span>
-      <div className="doc-slot-info">
-        <div className="doc-slot-title">{slot.label}</div>
-        <div className="doc-slot-sub">
-          {existing
-            ? `${existing.filename} · ${new Date(existing.uploaded_at).toLocaleDateString()}`
-            : slot.desc}
+
+      <div style={{ fontWeight:700, fontSize:12, color:'var(--navy)', marginBottom:4 }}>
+        {existing ? '✅' : '○'} {slot.label}
+      </div>
+
+      {existing ? (
+        <div>
+          <div style={{ fontSize:11, color:'var(--grey-muted)', marginBottom:8, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {existing.filename}
+          </div>
+          <div style={{ fontSize:11, color:'var(--grey-muted)', marginBottom:8 }}>
+            {new Date(existing.uploaded_at).toLocaleDateString()}
+          </div>
+          <div style={{ display:'flex', gap:5 }}>
+            <button className="btn btn-ghost btn-xs" onClick={() => fileRef.current.click()}>Replace</button>
+            <button className="btn btn-danger btn-xs" onClick={handleDelete}>Delete</button>
+          </div>
         </div>
-        {error && <div style={{ fontSize: 12, color: 'var(--crit)', marginTop: 3 }}>{error}</div>}
-      </div>
-      <div className="doc-slot-actions">
-        <button className="btn btn-ghost btn-xs" onClick={() => fileRef.current.click()}>
-          {existing ? 'Replace' : 'Upload'}
-        </button>
-        {existing && (
-          <button className="btn btn-danger btn-xs" onClick={handleDelete}>Delete</button>
-        )}
-      </div>
+      ) : uploading ? (
+        <div style={{ fontSize:12, color:'var(--grey-muted)' }}>
+          <div className="spinner" style={{ width:18, height:18, borderWidth:2, display:'inline-block', verticalAlign:'middle', marginRight:6 }} />
+          Uploading…
+        </div>
+      ) : (
+        <div>
+          <div style={{ fontSize:11, color:'var(--grey-muted)', marginBottom:8, lineHeight:1.4 }}>
+            {slot.type === 'warranty_policy'  && 'Rules, claim requirements, pre-auth thresholds'}
+            {slot.type === 'portal_structure' && 'Portal field definitions, char limits'}
+            {slot.type === 'machine_handbook' && 'Repair procedures, torque specs'}
+            {slot.type === 'historic_claims'  && 'Approved claims — teaches tone & detail'}
+          </div>
+          <button className="btn btn-ghost btn-xs" onClick={() => fileRef.current.click()}>
+            Upload PDF
+          </button>
+        </div>
+      )}
+      {error && <div style={{ fontSize:11, color:'var(--crit)', marginTop:5 }}>{error}</div>}
     </div>
   )
 }
 
-function AddOEMModal({ onClose, onAdded }) {
-  const [file,     setFile]    = useState(null)
-  const [dragOver, setDragOver]= useState(false)
-  const [loading,  setLoading] = useState(false)
-  const [error,    setError]   = useState(null)
+// ── Add Documents modal ──────────────────────────────────────────────────────
+function AddDocModal({ existingRows, onClose, onUploaded }) {
+  const [oemName,   setOemName]   = useState('')
+  const [machName,  setMachName]  = useState('')
+  const [docType,   setDocType]   = useState('warranty_policy')
+  const [file,      setFile]      = useState(null)
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState(null)
+  const [drag,      setDrag]      = useState(false)
   const fileRef = useRef()
 
+  // Autocomplete options
+  const oemOptions     = [...new Set(existingRows.map(r => r.oemName))]
+  const machineOptions = existingRows.filter(r => r.oemName.toLowerCase() === oemName.toLowerCase()).map(r => r.machineModel)
+
   async function handleUpload() {
-    if (!file) return
+    if (!oemName || !machName || !file) return
     setLoading(true); setError(null)
     try {
       const fd = new FormData()
-      fd.append('pdf', file)
-      const r = await fetch('/api/oem/upload', { method: 'POST', body: fd })
+      fd.append('pdf',         file)
+      fd.append('oemName',     oemName.trim())
+      fd.append('machineName', machName.trim())
+      fd.append('docType',     docType)
+      const r = await fetch('/api/documents/upload', { method:'POST', body:fd })
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Upload failed') }
-      const data = await r.json()
-      onAdded(data)
-    } catch (e) {
+      onUploaded()
+    } catch(e) {
       setError(e.message); setLoading(false)
     }
   }
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(13,31,60,.55)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+      position:'fixed', inset:0, background:'rgba(13,31,60,.55)',
+      display:'flex', alignItems:'center', justifyContent:'center', zIndex:200,
     }}>
-      <div style={{ background: 'var(--white)', borderRadius: 12, padding: 28, width: 480, maxWidth: '90vw' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h3 style={{ fontSize: 20, color: 'var(--navy)' }}>Add OEM Configuration</h3>
+      <div style={{ background:'var(--white)', borderRadius:12, padding:28, width:500, maxWidth:'92vw' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <h3 style={{ fontSize:20, color:'var(--navy)' }}>Add Documents</h3>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
         </div>
 
         {loading ? (
-          <div className="loader" style={{ padding: '36px 0' }}>
+          <div className="loader" style={{ padding:'36px 0' }}>
             <div className="spinner" />
-            <div className="loader-title">Parsing warranty policy…</div>
-            <div className="loader-sub">Extracting rules, fields, and portal structure</div>
+            <div className="loader-title">Uploading and extracting…</div>
+            <div className="loader-sub">This may take a moment for large PDFs</div>
           </div>
         ) : (
           <>
-            <p style={{ fontSize: 13, color: 'var(--grey-muted)', marginBottom: 16 }}>
-              Upload the OEM warranty policy PDF. We'll automatically extract the OEM name, policy rules, job card fields, and portal field structure.
-            </p>
             {error && <div className="err">{error}</div>}
-            <div
-              className={`drop-zone ${dragOver ? 'over' : ''}`}
-              onClick={() => fileRef.current.click()}
-              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={e => { e.preventDefault(); setDragOver(false); setFile(e.dataTransfer.files[0]) }}
-            >
-              <input ref={fileRef} type="file" accept="application/pdf"
-                onChange={e => setFile(e.target.files[0])} />
-              <div className="drop-zone-icon">📄</div>
-              <div className="drop-zone-title">{file ? file.name : 'Drop warranty policy PDF here'}</div>
-              <div className="drop-zone-sub">{file ? `${(file.size/1024).toFixed(0)} KB` : 'or click to browse'}</div>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:18 }}>
+
+              {/* OEM name */}
+              <div className="field-group">
+                <label className="field-label">OEM / Manufacturer</label>
+                <input
+                  className="field-input" list="oem-opts"
+                  placeholder="e.g. Kubota, John Deere, Caterpillar"
+                  value={oemName} onChange={e => setOemName(e.target.value)}
+                />
+                <datalist id="oem-opts">
+                  {oemOptions.map(o => <option key={o} value={o} />)}
+                </datalist>
+              </div>
+
+              {/* Machine model */}
+              <div className="field-group">
+                <label className="field-label">Machine Model</label>
+                <input
+                  className="field-input" list="mach-opts"
+                  placeholder="e.g. M7-173, 320GC, D6T"
+                  value={machName} onChange={e => setMachName(e.target.value)}
+                />
+                <datalist id="mach-opts">
+                  {machineOptions.map(m => <option key={m} value={m} />)}
+                </datalist>
+              </div>
+
+              {/* Document type */}
+              <div className="field-group">
+                <label className="field-label">Document Type</label>
+                <select className="field-input" value={docType} onChange={e => setDocType(e.target.value)}>
+                  {DOC_SLOTS.map(s => (
+                    <option key={s.type} value={s.type}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* File upload */}
+              <div className="field-group">
+                <label className="field-label">PDF File</label>
+                <div
+                  className={`drop-zone ${drag ? 'over' : ''}`}
+                  style={{ padding:'24px 16px' }}
+                  onClick={() => fileRef.current.click()}
+                  onDragOver={e => { e.preventDefault(); setDrag(true) }}
+                  onDragLeave={() => setDrag(false)}
+                  onDrop={e => { e.preventDefault(); setDrag(false); setFile(e.dataTransfer.files[0]) }}
+                >
+                  <input ref={fileRef} type="file" accept="application/pdf"
+                    onChange={e => setFile(e.target.files[0])} />
+                  <div className="drop-zone-icon" style={{ fontSize:24 }}>📄</div>
+                  <div className="drop-zone-title" style={{ fontSize:14 }}>
+                    {file ? file.name : 'Drop PDF here or click to browse'}
+                  </div>
+                  {file && (
+                    <div className="drop-zone-sub">{(file.size/1024).toFixed(0)} KB</div>
+                  )}
+                </div>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button className="btn btn-primary" onClick={handleUpload} disabled={!file}>
-                Parse &amp; Create OEM →
+
+            <div style={{ display:'flex', gap:8 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleUpload}
+                disabled={!oemName || !machName || !file}
+              >
+                Upload &amp; Extract →
               </button>
               <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
             </div>
