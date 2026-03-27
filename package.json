@@ -1,14 +1,14 @@
 {
-  "name": "machinery-pilot",
+  "name": "warranty-enrichment-engine",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "build": "cd frontend && npm run build",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+    "dev": "concurrently \"npm run dev --prefix frontend\" \"node backend/server.js\"",
+    "build": "npm run build --prefix frontend",
+    "start": "node backend/server.js",
+    "install:all": "npm install && npm install --prefix frontend && npm install --prefix backend"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^9.1.2"
   }
 }
