@@ -1,14 +1,16 @@
 import { useState, useRef } from 'react'
 
 export default function JobCardUpload({ oemConfig, onDone, onBack }) {
-  const [file,     setFile]     = useState(null)
-  const [dragOver, setDragOver] = useState(false)
-  const [phase,    setPhase]    = useState('idle') // idle | extracting | enriching
-  const [error,    setError]    = useState(null)
+  const [file,       setFile]       = useState(null)
+  const [repairDate, setRepairDate] = useState('')
+  const [dragOver,   setDragOver]   = useState(false)
+  const [phase,      setPhase]      = useState('idle') // idle | extracting | enriching
+  const [error,      setError]      = useState(null)
   const fileRef = useRef()
 
   async function handleProcess() {
     if (!file) return
+    if (!repairDate) { setError('Repair date is required'); return }
     setError(null)
 
     try {
@@ -17,6 +19,7 @@ export default function JobCardUpload({ oemConfig, onDone, onBack }) {
       const fd = new FormData()
       fd.append('pdf', file)
       fd.append('oemConfigId', oemConfig.id)
+      fd.append('repair_date', repairDate)
 
       const r1 = await fetch('/api/jobcard/upload', { method: 'POST', body: fd })
       if (!r1.ok) { const e = await r1.json(); throw new Error(e.error || 'Extraction failed') }
@@ -70,11 +73,22 @@ export default function JobCardUpload({ oemConfig, onDone, onBack }) {
         <h2 className="card-title">Step 2 — Job Card Upload</h2>
         <p className="card-subtitle">
           Upload the engineer's job card PDF for <strong>{oemConfig.name}</strong>.
-          Fields will be extracted and enriched against the warranty policy automatically.
+          Fields will be extracted and gap-analysed against the warranty policy.
         </p>
       </div>
 
       {error && <div className="err">{error}</div>}
+
+      <div className="field-group" style={{ marginBottom: 18 }}>
+        <label className="field-label">Repair Date *</label>
+        <input
+          type="date"
+          className="field-input"
+          value={repairDate}
+          onChange={e => setRepairDate(e.target.value)}
+          style={{ maxWidth: 220 }}
+        />
+      </div>
 
       <div
         className={`drop-zone ${dragOver ? 'over' : ''}`}
@@ -94,7 +108,7 @@ export default function JobCardUpload({ oemConfig, onDone, onBack }) {
 
       {file && (
         <div style={{marginTop:16,display:'flex',gap:8}}>
-          <button className="btn btn-primary" onClick={handleProcess}>Extract &amp; Enrich →</button>
+          <button className="btn btn-primary" onClick={handleProcess} disabled={!repairDate}>Extract &amp; Analyse →</button>
           <button className="btn btn-ghost" onClick={() => setFile(null)}>Clear</button>
         </div>
       )}

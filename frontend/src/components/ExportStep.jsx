@@ -32,7 +32,8 @@ export default function ExportStep({ sessionId, sessionData, oemConfig, onReset 
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href     = url
-      a.download = `${fmt === 'txt' ? 'enriched-job-card' : 'portal-export'}-${sessionId.slice(0, 8)}.${fmt}`
+      const names = { docx: 'job-card-comments', csv: 'portal-export' }
+      a.download = `${names[fmt] || 'export'}-${sessionId.slice(0, 8)}.${fmt}`
       document.body.appendChild(a); a.click()
       document.body.removeChild(a); URL.revokeObjectURL(url)
 
@@ -87,12 +88,12 @@ export default function ExportStep({ sessionId, sessionData, oemConfig, onReset 
         <div className="export-grid">
           <div className="exp-card">
             <div className="exp-icon">📄</div>
-            <h3 className="exp-title">Enriched Job Card</h3>
+            <h3 className="exp-title">Job Card &amp; Comments</h3>
             <p className="exp-desc">
-              Plain text with all final field values in labelled sections. For internal records or manual portal entry.
+              Word document with original field values and all identified documentation gaps per field.
             </p>
-            <button className="btn btn-navy" onClick={() => download('txt')} disabled={dl === 'txt'}>
-              {dl === 'txt' ? 'Generating…' : '⬇ Download .txt'}
+            <button className="btn btn-navy" onClick={() => download('docx')} disabled={dl === 'docx'}>
+              {dl === 'docx' ? 'Generating…' : '⬇ Download .docx'}
             </button>
           </div>
           <div className="exp-card">

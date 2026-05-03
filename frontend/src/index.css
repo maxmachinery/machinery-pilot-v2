@@ -20,7 +20,9 @@
   --minor:     #2563EB;  --minor-bg: #EFF6FF;  --minor-ring: #BFDBFE;
 }
 
-html, body { height: 100%; background: var(--grey-bg); color: var(--text); }
+html, body { height: 100%; width: 100%; overflow: hidden; background: var(--grey-bg); color: var(--text); }
+
+#root { width: 100%; height: 100%; }
 
 body {
   font-family: 'Barlow', sans-serif;
@@ -35,28 +37,24 @@ h1,h2,h3,h4,h5 {
 button, input, textarea, select { font-family: 'Barlow', sans-serif; }
 
 /* ══ App shell ════════════════════════════════════════════════════ */
-.shell { height: 100vh; display: flex; overflow: hidden; }
+.shell { height: 100%; display: flex; overflow: hidden; }
 
 /* ══ Sidebar ══════════════════════════════════════════════════════ */
 .sidebar {
   width: var(--sidebar-w); flex-shrink: 0;
   background: var(--navy);
   display: flex; flex-direction: column;
-  height: 100vh; overflow-y: auto;
+  height: 100%; overflow-y: auto;
 }
 .sidebar-logo {
-  padding: 20px 18px 16px;
+  padding: 16px 18px 14px;
   border-bottom: 1px solid rgba(255,255,255,.08);
 }
 .sidebar-logo-mark {
   font-family: 'Barlow Condensed', sans-serif;
-  font-weight: 700; font-size: 17px;
-  color: var(--white); letter-spacing: .04em; line-height: 1.1;
-  display: block;
-}
-.sidebar-logo-sub {
-  font-size: 10px; color: rgba(255,255,255,.35);
-  text-transform: uppercase; letter-spacing: .12em; margin-top: 3px; display: block;
+  font-weight: 700; font-size: 15px;
+  color: rgba(255,255,255,.5); letter-spacing: .06em; line-height: 1.1;
+  display: block; text-transform: uppercase;
 }
 
 .sidebar-section-label {
@@ -142,8 +140,8 @@ button, input, textarea, select { font-family: 'Barlow', sans-serif; }
   cursor: pointer; transition: all .15s; white-space: nowrap;
 }
 .btn:disabled { opacity: .4; cursor: not-allowed; }
-.btn-primary { background: var(--cyan); color: var(--navy); }
-.btn-primary:hover:not(:disabled) { background: var(--cyan-dark); }
+.btn-primary { background: #3B9B53; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #2e7a40; }
 .btn-navy    { background: var(--navy); color: var(--white); }
 .btn-navy:hover:not(:disabled)    { background: var(--navy-mid); }
 .btn-ghost   { background: transparent; color: var(--navy); border: 1.5px solid var(--grey-border); }

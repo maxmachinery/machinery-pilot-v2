@@ -1,45 +1,61 @@
 import { useState } from 'react'
-import Sidebar      from './components/Sidebar.jsx'
-import OEMLibrary   from './pages/OEMLibrary.jsx'
-import NewClaim     from './pages/NewClaim.jsx'
-import ClaimHistory from './pages/ClaimHistory.jsx'
-import Settings     from './pages/Settings.jsx'
+import AppScaler     from './components/AppScaler.jsx'
+import Sidebar       from './components/Sidebar.jsx'
+import OEMLibrary    from './pages/OEMLibrary.jsx'
+import NewClaim      from './pages/NewClaim.jsx'
+import ClaimHistory  from './pages/ClaimHistory.jsx'
+import Settings      from './pages/Settings.jsx'
+import CustomPrompts      from './pages/CustomPrompts.jsx'
+import BrandDetail        from './pages/BrandDetail.jsx'
+import WarrantyAssistant  from './pages/WarrantyAssistant.jsx'
 
-const TITLES = { library:'OEM Library', claim:'New Claim', history:'Claim History', settings:'Settings' }
+const TITLES = {
+  claim:     'New Claim',
+  history:   'Claim History',
+  assistant: 'Warranty Assistant',
+  library:   'OEM Library',
+  prompts:   'Custom Prompts',
+  settings:  'Settings',
+  brand:     'Brand',
+}
 
 export default function App() {
-  const [page,       setPage]       = useState('library')
-  const [activeMach, setActiveMach] = useState(null) // library row {oemName, machineModel, machineId, ...}
+  const [page,          setPage]          = useState('claim')
+  const [selectedBrand, setSelectedBrand] = useState(null)
 
-  function startClaimWithMachine(row) {
-    setActiveMach(row)
-    setPage('claim')
+  function handleSelectBrand(brandName) {
+    setSelectedBrand(brandName)
+    setPage('brand')
   }
 
-  return (
-    <div className="shell">
-      <Sidebar currentPage={page} onNavigate={setPage} activeMachine={activeMach} onSelectMachine={m => { setActiveMach(m); setPage('library') }} />
+  const title = page === 'brand' ? (selectedBrand || 'Brand') : (TITLES[page] || '')
 
-      <div className="main-area">
-        <div className="topbar">
-          <span className="topbar-title">{TITLES[page]}</span>
-          <div className="topbar-right">
-            {activeMach && page === 'claim' && (
-              <div className="topbar-oem-chip">
-                <span className="dot" />
-                {activeMach.oemName} — {activeMach.machineModel}
-              </div>
-            )}
+  return (
+    <AppScaler>
+      <div className="shell">
+        <Sidebar
+          currentPage={page}
+          onNavigate={setPage}
+          onSelectBrand={handleSelectBrand}
+        />
+
+        <div className="main-area">
+          <div className="topbar">
+            <span className="topbar-title">{title}</span>
+            <div className="topbar-right" />
+          </div>
+
+          <div className="page-body">
+            {page === 'claim'     && <NewClaim />}
+            {page === 'history'   && <ClaimHistory />}
+            {page === 'assistant' && <WarrantyAssistant />}
+            {page === 'library'   && <OEMLibrary onStartClaim={() => setPage('claim')} />}
+            {page === 'prompts'   && <CustomPrompts />}
+            {page === 'settings'  && <Settings />}
+            {page === 'brand'     && <BrandDetail brand={selectedBrand} onNavigate={setPage} />}
           </div>
         </div>
-
-        <div className="page-body">
-          {page === 'library'  && <OEMLibrary onStartClaim={startClaimWithMachine} />}
-          {page === 'claim'    && <NewClaim initialOem={activeMach} onOemChange={setActiveMach} />}
-          {page === 'history'  && <ClaimHistory />}
-          {page === 'settings' && <Settings />}
-        </div>
       </div>
-    </div>
+    </AppScaler>
   )
 }

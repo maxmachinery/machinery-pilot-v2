@@ -1,17 +1,28 @@
 import { useState, useEffect, useRef } from 'react'
 
+function fileIcon(filename) {
+  if (!filename) return '📎'
+  const ext = filename.split('.').pop().toLowerCase()
+  if (ext === 'pdf') return '📄'
+  if (['doc', 'docx'].includes(ext)) return '📝'
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff'].includes(ext)) return '🖼'
+  if (['txt', 'md', 'csv'].includes(ext)) return '📃'
+  return '📎'
+}
+
 const DOC_SLOTS = [
-  { type: 'warranty_policy',  label: 'Warranty Policy',  short: 'Policy'  },
-  { type: 'portal_structure', label: 'Portal Structure', short: 'Portal'  },
-  { type: 'machine_handbook', label: 'Machine Handbook', short: 'Handbook'},
-  { type: 'historic_claims',  label: 'Historic Claims',  short: 'Historic'},
+  { type: 'warranty_policy',   label: 'Warranty Policy',   short: 'Policy'   },
+  { type: 'portal_structure',  label: 'Portal Structure',  short: 'Portal'   },
+  { type: 'technical_manual',  label: 'Technical Manual',  short: 'Manual'   },
+  { type: 'warranty_schedule', label: 'Warranty Schedule', short: 'Schedule' },
+  { type: 'historic_claims',   label: 'Historic Claims',   short: 'Historic' },
 ]
 
 export default function OEMLibrary({ focusOemId, onStartClaim }) {
   const [rows,       setRows]       = useState([])
   const [loading,    setLoading]    = useState(true)
   const [showAdd,    setShowAdd]    = useState(false)
-  const [expandedId, setExpandedId] = useState(null) // machineId with detail open
+  const [expandedId, setExpandedId] = useState(null) // rowKey with detail open
 
   useEffect(() => { loadLibrary() }, [])
 
@@ -57,7 +68,7 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
           {/* Table header */}
           <div style={{
             display:'grid',
-            gridTemplateColumns:'160px 180px repeat(4,1fr) 100px',
+            gridTemplateColumns:'160px 180px repeat(5,1fr) 100px',
             padding:'9px 16px',
             background:'var(--grey-bg)',
             borderBottom:'2px solid var(--grey-border)',
@@ -72,17 +83,17 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
           </div>
 
           {rows.map((row, i) => {
-            const isExpanded = expandedId === row.machineId
+            const isExpanded = expandedId === row.rowKey
             const prevRow    = rows[i - 1]
             const sameOem    = prevRow && prevRow.oemId === row.oemId
 
             return (
-              <div key={row.machineId}>
+              <div key={row.rowKey}>
                 {/* Main row */}
                 <div
                   style={{
                     display:'grid',
-                    gridTemplateColumns:'160px 180px repeat(4,1fr) 100px',
+                    gridTemplateColumns:'160px 180px repeat(5,1fr) 100px',
                     padding:'10px 16px',
                     borderBottom: isExpanded ? 'none' : '1px solid var(--grey-border)',
                     alignItems:'center',
@@ -93,7 +104,7 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
                   }}
                   onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = 'rgba(0,180,240,.03)' }}
                   onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = 'transparent' }}
-                  onClick={() => setExpandedId(isExpanded ? null : row.machineId)}
+                  onClick={() => setExpandedId(isExpanded ? null : row.rowKey)}
                 >
                   {/* OEM — show name only for first row of each OEM */}
                   <div style={{ fontSize:14, fontWeight:600, color: sameOem ? 'transparent' : 'var(--navy)', userSelect:'none' }}>
@@ -101,8 +112,11 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
                   </div>
 
                   {/* Machine */}
-                  <div style={{ fontSize:13, color:'var(--text)', fontWeight:500 }}>
-                    {row.machineModel}
+                  <div style={{ fontSize:13, fontWeight:500 }}>
+                    {row.isOemWide
+                      ? <span style={{ color:'var(--grey-muted)', fontStyle:'italic' }}>OEM-wide</span>
+                      : <span style={{ color:'var(--text)' }}>{row.machineModel}</span>
+                    }
                   </div>
 
                   {/* Doc status cells */}
@@ -111,7 +125,7 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
                     return (
                       <div key={s.type}>
                         {doc
-                          ? <span title={doc.filename} style={{ color:'var(--ok)', fontWeight:700, fontSize:13 }}>✓</span>
+                          ? <span title={doc.filename} style={{ color:'var(--ok)', fontWeight:700, fontSize:13 }}>{fileIcon(doc.filename)} ✓</span>
                           : <span style={{ color:'var(--grey-border)', fontSize:16 }}>—</span>
                         }
                       </div>
@@ -120,13 +134,15 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
 
                   {/* Actions */}
                   <div style={{ display:'flex', gap:5 }} onClick={e => e.stopPropagation()}>
-                    <button
-                      className="btn btn-primary btn-xs"
-                      onClick={() => onStartClaim(row)}
-                      title="Start new claim with this machine"
-                    >
-                      Claim
-                    </button>
+                    {!row.isOemWide && (
+                      <button
+                        className="btn btn-primary btn-xs"
+                        onClick={() => onStartClaim(row)}
+                        title="Start new claim with this machine"
+                      >
+                        Claim
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -137,7 +153,7 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
                     onDocUploaded={handleDocUploaded}
                     onDocDeleted={handleDocDeleted}
                     onClose={() => setExpandedId(null)}
-                    onStartClaim={() => onStartClaim(row)}
+                    onStartClaim={row.isOemWide ? null : () => onStartClaim(row)}
                   />
                 )}
               </div>
@@ -178,19 +194,19 @@ function MachineDetailRow({ row, onDocUploaded, onDocDeleted, onClose, onStartCl
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
         <div>
           <span style={{ fontFamily:'Barlow Condensed,sans-serif', fontWeight:700, fontSize:18, color:'var(--navy)' }}>
-            {row.oemName} — {row.machineModel}
+            {row.isOemWide ? `${row.oemName} — OEM-wide` : `${row.oemName} — ${row.machineModel}`}
           </span>
           <span style={{ fontSize:12, color:'var(--grey-muted)', marginLeft:10 }}>
             {(row.job_card_fields || []).length} job card fields · {(row.portal_fields || []).length} portal fields
           </span>
         </div>
         <div style={{ display:'flex', gap:8 }}>
-          <button className="btn btn-primary btn-sm" onClick={onStartClaim}>Start Claim →</button>
+          {onStartClaim && <button className="btn btn-primary btn-sm" onClick={onStartClaim}>Start Claim →</button>}
           <button className="btn btn-ghost btn-sm" onClick={onClose}>✕ Close</button>
         </div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10 }}>
         {DOC_SLOTS.map(slot => {
           const existing = (row.documents || []).find(d => d.doc_type === slot.type)
           return (
@@ -199,7 +215,7 @@ function MachineDetailRow({ row, onDocUploaded, onDocDeleted, onClose, onStartCl
               slot={slot}
               existing={existing}
               oemName={row.oemName}
-              machineName={row.machineModel}
+              machineName={row.isOemWide ? '' : row.machineModel}
               onUploaded={onDocUploaded}
               onDeleted={onDocDeleted}
             />
@@ -238,16 +254,21 @@ function DocCell({ slot, existing, oemName, machineName, onUploaded, onDeleted }
   const fileRef = useRef()
 
   async function handleFile(file) {
-    if (!file || file.type !== 'application/pdf') return
+    if (!file) return
     setUploading(true); setError(null)
     try {
       const fd = new FormData()
-      fd.append('pdf', file)
+      fd.append('file', file)
       fd.append('oemName',     oemName)
       fd.append('machineName', machineName)
       fd.append('docType',     slot.type)
       const r = await fetch('/api/documents/upload', { method:'POST', body:fd })
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Upload failed') }
+      if (!r.ok) {
+        const text = await r.text()
+        let msg = `Upload failed (${r.status})`
+        try { msg = JSON.parse(text).error || msg } catch { msg = `${msg}: ${text.slice(0, 200)}` }
+        throw new Error(msg)
+      }
       onUploaded()
     } catch(e) { setError(e.message) }
     finally { setUploading(false) }
@@ -271,7 +292,7 @@ function DocCell({ slot, existing, oemName, machineName, onUploaded, onDeleted }
       onDragLeave={() => setDrag(false)}
       onDrop={e => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]) }}
     >
-      <input ref={fileRef} type="file" accept="application/pdf" style={{ display:'none' }}
+      <input ref={fileRef} type="file" accept="*/*" style={{ display:'none' }}
         onChange={e => handleFile(e.target.files[0])} />
 
       <div style={{ fontWeight:700, fontSize:12, color:'var(--navy)', marginBottom:4 }}>
@@ -301,11 +322,12 @@ function DocCell({ slot, existing, oemName, machineName, onUploaded, onDeleted }
           <div style={{ fontSize:11, color:'var(--grey-muted)', marginBottom:8, lineHeight:1.4 }}>
             {slot.type === 'warranty_policy'  && 'Rules, claim requirements, pre-auth thresholds'}
             {slot.type === 'portal_structure' && 'Portal field definitions, char limits'}
-            {slot.type === 'machine_handbook' && 'Repair procedures, torque specs'}
-            {slot.type === 'historic_claims'  && 'Approved claims — teaches tone & detail'}
+            {slot.type === 'technical_manual'  && 'Repair procedures, torque specs'}
+            {slot.type === 'warranty_schedule' && 'Per-time labour operations and reimbursement rates'}
+            {slot.type === 'historic_claims'   && 'Approved claims — teaches tone & detail'}
           </div>
           <button className="btn btn-ghost btn-xs" onClick={() => fileRef.current.click()}>
-            Upload PDF
+            Upload File
           </button>
         </div>
       )}
@@ -316,13 +338,14 @@ function DocCell({ slot, existing, oemName, machineName, onUploaded, onDeleted }
 
 // ── Add Documents modal ──────────────────────────────────────────────────────
 function AddDocModal({ existingRows, onClose, onUploaded }) {
-  const [oemName,   setOemName]   = useState('')
-  const [machName,  setMachName]  = useState('')
-  const [docType,   setDocType]   = useState('warranty_policy')
-  const [file,      setFile]      = useState(null)
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState(null)
-  const [drag,      setDrag]      = useState(false)
+  const [oemName,     setOemName]     = useState('')
+  const [machName,    setMachName]    = useState('')
+  const [docType,     setDocType]     = useState('warranty_policy')
+  const [file,        setFile]        = useState(null)
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState(null)
+  const [fieldErrors, setFieldErrors] = useState({})
+  const [drag,        setDrag]        = useState(false)
   const fileRef = useRef()
 
   // Autocomplete options
@@ -330,16 +353,25 @@ function AddDocModal({ existingRows, onClose, onUploaded }) {
   const machineOptions = existingRows.filter(r => r.oemName.toLowerCase() === oemName.toLowerCase()).map(r => r.machineModel)
 
   async function handleUpload() {
-    if (!oemName || !machName || !file) return
+    const errs = {}
+    if (!oemName.trim()) errs.oemName = 'OEM is required'
+    if (!file)           errs.file    = 'File is required'
+    if (Object.keys(errs).length) { setFieldErrors(errs); return }
+    setFieldErrors({})
     setLoading(true); setError(null)
     try {
       const fd = new FormData()
-      fd.append('pdf',         file)
+      fd.append('file',        file)
       fd.append('oemName',     oemName.trim())
       fd.append('machineName', machName.trim())
       fd.append('docType',     docType)
       const r = await fetch('/api/documents/upload', { method:'POST', body:fd })
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Upload failed') }
+      if (!r.ok) {
+        const text = await r.text()
+        let msg = `Upload failed (${r.status})`
+        try { msg = JSON.parse(text).error || msg } catch { msg = `${msg}: ${text.slice(0, 200)}` }
+        throw new Error(msg)
+      }
       onUploaded()
     } catch(e) {
       setError(e.message); setLoading(false)
@@ -371,23 +403,25 @@ function AddDocModal({ existingRows, onClose, onUploaded }) {
 
               {/* OEM name */}
               <div className="field-group">
-                <label className="field-label">OEM / Manufacturer</label>
+                <label className="field-label">OEM / Manufacturer <span style={{ color:'var(--crit)' }}>*</span></label>
                 <input
                   className="field-input" list="oem-opts"
                   placeholder="e.g. Kubota, John Deere, Caterpillar"
-                  value={oemName} onChange={e => setOemName(e.target.value)}
+                  value={oemName} onChange={e => { setOemName(e.target.value); setFieldErrors(fe => ({ ...fe, oemName: null })) }}
+                  style={fieldErrors.oemName ? { borderColor:'var(--crit)' } : {}}
                 />
                 <datalist id="oem-opts">
                   {oemOptions.map(o => <option key={o} value={o} />)}
                 </datalist>
+                {fieldErrors.oemName && <div style={{ fontSize:12, color:'var(--crit)', marginTop:4 }}>{fieldErrors.oemName}</div>}
               </div>
 
-              {/* Machine model */}
+              {/* Machine model — optional */}
               <div className="field-group">
-                <label className="field-label">Machine Model</label>
+                <label className="field-label">Machine Model <span style={{ color:'var(--grey-muted)', fontWeight:400 }}>(optional)</span></label>
                 <input
                   className="field-input" list="mach-opts"
-                  placeholder="e.g. M7-173, 320GC, D6T"
+                  placeholder="Leave blank for OEM-wide documents (e.g. general warranty policy)"
                   value={machName} onChange={e => setMachName(e.target.value)}
                 />
                 <datalist id="mach-opts">
@@ -397,7 +431,7 @@ function AddDocModal({ existingRows, onClose, onUploaded }) {
 
               {/* Document type */}
               <div className="field-group">
-                <label className="field-label">Document Type</label>
+                <label className="field-label">Document Type <span style={{ color:'var(--crit)' }}>*</span></label>
                 <select className="field-input" value={docType} onChange={e => setDocType(e.target.value)}>
                   {DOC_SLOTS.map(s => (
                     <option key={s.type} value={s.type}>{s.label}</option>
@@ -407,25 +441,26 @@ function AddDocModal({ existingRows, onClose, onUploaded }) {
 
               {/* File upload */}
               <div className="field-group">
-                <label className="field-label">PDF File</label>
+                <label className="field-label">File <span style={{ color:'var(--crit)' }}>*</span></label>
                 <div
                   className={`drop-zone ${drag ? 'over' : ''}`}
-                  style={{ padding:'24px 16px' }}
+                  style={{ padding:'24px 16px', ...(fieldErrors.file ? { borderColor:'var(--crit)' } : {}) }}
                   onClick={() => fileRef.current.click()}
                   onDragOver={e => { e.preventDefault(); setDrag(true) }}
                   onDragLeave={() => setDrag(false)}
-                  onDrop={e => { e.preventDefault(); setDrag(false); setFile(e.dataTransfer.files[0]) }}
+                  onDrop={e => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files[0]; setFile(f); setFieldErrors(fe => ({ ...fe, file: null })) }}
                 >
-                  <input ref={fileRef} type="file" accept="application/pdf"
-                    onChange={e => setFile(e.target.files[0])} />
-                  <div className="drop-zone-icon" style={{ fontSize:24 }}>📄</div>
+                  <input ref={fileRef} type="file" accept="*/*"
+                    onChange={e => { setFile(e.target.files[0]); setFieldErrors(fe => ({ ...fe, file: null })) }} />
+                  <div className="drop-zone-icon" style={{ fontSize:24 }}>{file ? fileIcon(file.name) : '📎'}</div>
                   <div className="drop-zone-title" style={{ fontSize:14 }}>
-                    {file ? file.name : 'Drop PDF here or click to browse'}
+                    {file ? file.name : 'Any file type · click or drop'}
                   </div>
                   {file && (
                     <div className="drop-zone-sub">{(file.size/1024).toFixed(0)} KB</div>
                   )}
                 </div>
+                {fieldErrors.file && <div style={{ fontSize:12, color:'var(--crit)', marginTop:4 }}>{fieldErrors.file}</div>}
               </div>
             </div>
 
@@ -433,7 +468,7 @@ function AddDocModal({ existingRows, onClose, onUploaded }) {
               <button
                 className="btn btn-primary"
                 onClick={handleUpload}
-                disabled={!oemName || !machName || !file}
+                disabled={!oemName || !file}
               >
                 Upload &amp; Extract →
               </button>

@@ -1,56 +1,85 @@
-import { useState, useRef } from 'react'
-import ReviewStep from '../components/ReviewStep.jsx'
-import ExportStep from '../components/ExportStep.jsx'
+import { useState, useRef, useEffect } from 'react'
+import TerexPortalView from '../components/portals/TerexPortalView.jsx'
 
 const STEPS = [
-  { n:1, label:'Select Machine' },
-  { n:2, label:'Job Card' },
-  { n:3, label:'Review' },
-  { n:4, label:'Export' },
+  { n: 1, label: 'Job Card'    },
+  { n: 2, label: 'Portal View' },
 ]
 
-export default function NewClaim({ initialOem, onOemChange }) {
-  // initialOem may now be a library row (has machineId, machineModel, oemName)
-  const initMachine = initialOem?.machineId ? initialOem : null
+const TEREX_BRANDS = ['terex', 'powerscreen', 'terex fuchs', 'doppstadt', 'finlay', 'ecotec', 'evoquip']
 
-  const [step,        setStep]        = useState(initMachine ? 2 : 1)
-  const [machine,     setMachine]     = useState(initMachine)   // library row
-  const [sessionId,   setSessionId]   = useState(null)
-  const [sessionData, setSessionData] = useState(null)
+function isTerexOem(oem) {
+  const name  = (oem?.name  || '').toLowerCase()
+  const brand = (oem?.brand || '').toLowerCase()
+  return TEREX_BRANDS.some(b => name.includes(b) || brand.includes(b))
+}
 
-  function handleMachineSelected(row) {
-    setMachine(row)
-    onOemChange?.({ id: row.oemId, name: row.oemName, ...row })
-    setStep(2)
+export default function NewClaim() {
+  const [step,           setStep]           = useState(1)
+  const [uploadedFiles,  setUploadedFiles]  = useState([])
+  const [selectedOem,    setSelectedOem]    = useState(null)
+  const [claimId,        setClaimId]        = useState(null)
+  const [claimIds,       setClaimIds]       = useState([])
+  const [portalOutput,   setPortalOutput]   = useState({})
+  const [aiRawResponse,  setAiRawResponse]  = useState('')
+  const [usedPromptId,   setUsedPromptId]   = useState(null)
+  const [usedPromptName, setUsedPromptName] = useState('')
+  const [processing,     setProcessing]     = useState(false)
+  const [processError,   setProcessError]   = useState(null)
+
+  async function runProcess(files, oem, promptId) {
+    setProcessing(true)
+    setProcessError(null)
+    try {
+      const r = await fetch('/api/claim/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oemConfigId: oem?.id,
+          files: files.map(f => ({ r2_key: f.r2_key, filename: f.filename, type: f.type, size: f.size })),
+          promptId: promptId || undefined,
+        }),
+      })
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Processing failed') }
+      const data = await r.json()
+      setClaimId(data.claimId)
+      setClaimIds(data.claimIds || [])
+      setPortalOutput(data.portalOutput || {})
+      setAiRawResponse(data.aiRawResponse || '')
+      setUsedPromptId(data.promptId || null)
+      setUsedPromptName(data.promptName || '')
+      setStep(2)
+    } catch(e) {
+      setProcessError(e.message)
+    } finally {
+      setProcessing(false)
+    }
   }
 
-  function handleJobCardDone(id, data) {
-    setSessionId(id); setSessionData(data); setStep(3)
+  function handleStep1Done(files, oem) {
+    setUploadedFiles(files)
+    setSelectedOem(oem)
+    runProcess(files, oem, null)
   }
-  function handleReviewDone(updated) {
-    setSessionData(updated); setStep(4)
-  }
+
   function handleReset() {
-    setStep(initMachine ? 2 : 1)
-    setMachine(initMachine)
-    setSessionId(null); setSessionData(null)
+    setStep(1)
+    setUploadedFiles([])
+    setSelectedOem(null)
+    setClaimId(null)
+    setClaimIds([])
+    setPortalOutput({})
+    setAiRawResponse('')
+    setUsedPromptId(null)
+    setUsedPromptName('')
+    setProcessError(null)
   }
-
-  // Build the oemConfig shape the review/export components expect
-  const oemConfig = machine ? {
-    id:              machine.oemId,
-    name:            machine.oemName,
-    brand:           machine.oemBrand,
-    job_card_fields: machine.job_card_fields || [],
-    portal_fields:   machine.portal_fields   || [],
-    policy_rules:    machine.policy_rules    || [],
-  } : null
 
   return (
     <div className="claim-layout">
       {/* Step rail */}
       <div className="step-rail">
-        <div className="card" style={{ padding:'16px 14px' }}>
+        <div className="card" style={{ padding: '16px 14px' }}>
           {STEPS.map((s, i) => (
             <div key={s.n}>
               <div className={`step-rail-item ${step===s.n?'active':step>s.n?'done':''}`}>
@@ -59,17 +88,14 @@ export default function NewClaim({ initialOem, onOemChange }) {
                 </div>
                 {s.label}
               </div>
-              {i < STEPS.length-1 && <div className="step-rail-line" />}
+              {i < STEPS.length - 1 && <div className="step-rail-line" />}
             </div>
           ))}
-          {machine && (
+          {selectedOem && (
             <>
-              <div className="divider" style={{ margin:'14px 0' }} />
-              <div style={{ fontSize:11, color:'var(--grey-muted)', textTransform:'uppercase', letterSpacing:'.07em', fontWeight:600, marginBottom:5 }}>
-                Selected
-              </div>
-              <div style={{ fontSize:13, fontWeight:700, color:'var(--navy)' }}>{machine.oemName}</div>
-              <div style={{ fontSize:12, color:'var(--grey-muted)', marginTop:2 }}>{machine.machineModel}</div>
+              <div className="divider" style={{ margin: '14px 0' }} />
+              <div style={{ fontSize: 11, color: 'var(--grey-muted)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 5 }}>OEM</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{selectedOem.name}</div>
             </>
           )}
         </div>
@@ -77,27 +103,29 @@ export default function NewClaim({ initialOem, onOemChange }) {
 
       {/* Step content */}
       <div>
-        {step === 1 && <StepSelectMachine onSelect={handleMachineSelected} />}
-        {step === 2 && machine && (
-          <StepJobCard
-            machine={machine}
-            onDone={handleJobCardDone}
-            onBack={() => setStep(1)}
-          />
+        {step === 1 && !processing && (
+          <StepJobCard onDone={handleStep1Done} error={processError} />
         )}
-        {step === 3 && (
-          <ReviewStep
-            sessionId={sessionId}
-            sessionData={sessionData}
-            onDone={handleReviewDone}
-            onBack={() => setStep(2)}
-          />
+        {processing && (
+          <div className="loader">
+            <div className="spinner" />
+            <div className="loader-title">Processing</div>
+            <div className="loader-sub">
+              Working on {uploadedFiles.length} document{uploadedFiles.length !== 1 ? 's' : ''}
+            </div>
+          </div>
         )}
-        {step === 4 && (
-          <ExportStep
-            sessionId={sessionId}
-            sessionData={sessionData}
-            oemConfig={oemConfig}
+        {step === 2 && !processing && (
+          <StepPortalView
+            claimId={claimId}
+            claimIds={claimIds}
+            portalOutput={portalOutput}
+            aiRawResponse={aiRawResponse}
+            oem={selectedOem}
+            uploadedFiles={uploadedFiles}
+            usedPromptId={usedPromptId}
+            usedPromptName={usedPromptName}
+            onRerun={(promptId) => runProcess(uploadedFiles, selectedOem, promptId)}
             onReset={handleReset}
           />
         )}
@@ -106,199 +134,377 @@ export default function NewClaim({ initialOem, onOemChange }) {
   )
 }
 
-// ── Step 1: Select OEM × Machine ─────────────────────────────────────────────
-function StepSelectMachine({ onSelect }) {
-  const [rows,     setRows]    = useState(null)
-  const [selected, setSelected]= useState(null)
-  const [filter,   setFilter]  = useState('')
+// ── Step 1: Job Card upload + OEM brand selection ─────────────────────────────
+function StepJobCard({ onDone, error: externalError }) {
+  const [files,         setFiles]         = useState([])
+  const [oems,          setOems]          = useState(null)
+  const [selectedOemId, setSelectedOemId] = useState('')
+  const [drag,          setDrag]          = useState(false)
+  const [error,         setError]         = useState(null)
+  const fileRef = useRef()
 
-  useState(() => {
-    fetch('/api/library').then(r => r.json()).then(setRows)
-  })
+  useEffect(() => {
+    fetch('/api/oem/configs')
+      .then(r => r.json())
+      .then(setOems)
+      .catch(() => setOems([]))
+  }, [])
 
-  if (!rows) return <div className="loader"><div className="spinner" /></div>
+  useEffect(() => {
+    if (externalError) setError(externalError)
+  }, [externalError])
 
-  const filtered = filter
-    ? rows.filter(r =>
-        r.oemName.toLowerCase().includes(filter.toLowerCase()) ||
-        r.machineModel.toLowerCase().includes(filter.toLowerCase())
-      )
-    : rows
+  const ACCEPT = '.pdf,.doc,.docx'
 
-  const DOC_TYPES = ['warranty_policy','portal_structure','machine_handbook','historic_claims']
-  const docCount  = r => DOC_TYPES.filter(t => (r.documents||[]).some(d => d.doc_type===t)).length
+  async function handleFiles(fileList) {
+    for (const f of Array.from(fileList)) {
+      const ext = f.name.split('.').pop().toLowerCase()
+      if (!['pdf','doc','docx'].includes(ext)) continue
+
+      const tempId = Math.random().toString(36).slice(2)
+      setFiles(prev => [...prev, { tempId, filename: f.name, size: f.size, type: ext, uploading: true }])
+
+      const fd = new FormData()
+      fd.append('file', f)
+      try {
+        const r = await fetch('/api/claim/upload-files', { method: 'POST', body: fd })
+        if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Upload failed') }
+        const data = await r.json()
+        setFiles(prev => prev.map(fi => fi.tempId === tempId ? { ...data, tempId, uploading: false } : fi))
+      } catch(e) {
+        setFiles(prev => prev.filter(fi => fi.tempId !== tempId))
+        setError(`Failed to upload ${f.name}: ${e.message}`)
+      }
+    }
+  }
+
+  const readyFiles  = files.filter(f => !f.uploading && f.r2_key)
+  const selectedOem = oems?.find(o => String(o.id) === String(selectedOemId))
+  const canContinue = readyFiles.length > 0 && selectedOemId && oems?.length > 0
 
   return (
     <div className="card">
       <div className="card-head">
-        <h2 className="card-title">Select Machine</h2>
-        <p className="card-subtitle">Choose the OEM + Machine this claim is for</p>
+        <h2 className="card-title">Job Card</h2>
+        <p className="card-subtitle">Upload one or more job cards and select the OEM brand.</p>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="empty">
-          No machines configured yet.<br />
-          <span style={{ fontSize:13 }}>Go to OEM Library and upload documents first.</span>
+      {error && (
+        <div className="err" style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between' }}>
+          <span>{error}</span>
+          <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }} onClick={() => setError(null)}>✕</button>
+        </div>
+      )}
+
+      {/* OEM Brand selector */}
+      <div className="field-group" style={{ marginBottom: 18 }}>
+        <label className="field-label">OEM Brand <span style={{ color: 'var(--crit)' }}>*</span></label>
+        {oems === null ? (
+          <div style={{ fontSize: 13, color: 'var(--grey-muted)' }}>Loading…</div>
+        ) : oems.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--warn)', padding: '8px 12px', background: 'var(--warn-bg)', borderRadius: 6, border: '1px solid var(--warn-ring)' }}>
+            No OEMs configured — go to OEM Library to add one.
+          </div>
+        ) : (
+          <select className="field-input" value={selectedOemId} onChange={e => setSelectedOemId(e.target.value)} style={{ maxWidth: 320 }}>
+            <option value="">Select…</option>
+            {oems.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        )}
+      </div>
+
+      {/* Drop zone */}
+      <div
+        className={`drop-zone ${drag ? 'over' : ''}`}
+        onClick={() => fileRef.current.click()}
+        onDragOver={e => { e.preventDefault(); setDrag(true) }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={e => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files) }}
+      >
+        <input ref={fileRef} type="file" accept={ACCEPT} multiple onChange={e => handleFiles(e.target.files)} />
+        <div className="drop-zone-icon">📋</div>
+        <div className="drop-zone-title">Drop job card files here</div>
+        <div className="drop-zone-sub">PDF or Word documents · Click to browse · Multiple files supported</div>
+      </div>
+
+      {/* File list */}
+      {files.length > 0 && (
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {files.map((f, i) => (
+            <div key={f.tempId || i} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 12px', borderRadius: 6,
+              background: f.uploading ? 'var(--grey-bg)' : 'rgba(22,163,74,.06)',
+              border: `1px solid ${f.uploading ? 'var(--grey-border)' : '#86EFAC'}`,
+            }}>
+              <span style={{ fontSize: 16 }}>{f.type === 'pdf' ? '📄' : '📝'}</span>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {f.filename}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--grey-muted)', whiteSpace: 'nowrap' }}>
+                {(f.size / 1024).toFixed(0)} KB
+              </span>
+              {f.uploading
+                ? <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                : <span style={{ color: 'var(--ok)', fontWeight: 700 }}>✓</span>
+              }
+              {!f.uploading && (
+                <button
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--grey-muted)', fontSize: 14, padding: '0 2px' }}
+                  onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
+                >✕</button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
+        <button className="btn btn-primary" disabled={!canContinue} onClick={() => onDone(readyFiles, selectedOem)}>
+          Continue →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Step 2: Portal View ───────────────────────────────────────────────────────
+function StepPortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem, usedPromptId, usedPromptName, onRerun, onReset }) {
+  return (
+    <PortalView
+      claimId={claimId}
+      claimIds={claimIds}
+      portalOutput={portalOutput}
+      aiRawResponse={aiRawResponse}
+      oem={oem}
+      usedPromptId={usedPromptId}
+      usedPromptName={usedPromptName}
+      onRerun={onRerun}
+      onReset={onReset}
+    />
+  )
+}
+
+// ── Portal View (with prompt switcher) ────────────────────────────────────────
+export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem, usedPromptId, usedPromptName, onRerun, onReset, onStatusChange, readOnly = false }) {
+  const [showSwitcher,   setShowSwitcher]   = useState(false)
+  const [availPrompts,   setAvailPrompts]   = useState(null)
+  const [selectedPid,    setSelectedPid]    = useState(null)
+
+  function openSwitcher() {
+    setShowSwitcher(true)
+    if (!availPrompts) {
+      fetch('/api/prompts')
+        .then(r => r.json())
+        .then(all => setAvailPrompts(all.filter(p => p.category === 'New Claim')))
+        .catch(() => setAvailPrompts([]))
+    }
+  }
+
+  function switchPrompt() {
+    if (!selectedPid) return
+    setShowSwitcher(false)
+    onRerun(selectedPid)
+  }
+
+  // Route to brand-specific portal mirror
+  if (isTerexOem(oem)) {
+    return (
+      <>
+        <PromptCaption usedPromptName={usedPromptName} claimIds={claimIds} onOpenSwitcher={openSwitcher} />
+        {showSwitcher && (
+          <PromptSwitcher
+            prompts={availPrompts}
+            currentId={usedPromptId}
+            selectedPid={selectedPid}
+            onSelect={setSelectedPid}
+            onConfirm={switchPrompt}
+            onClose={() => setShowSwitcher(false)}
+          />
+        )}
+        <TerexPortalView data={portalOutput} onReset={onReset} claimId={claimId} onStatusChange={onStatusChange} readOnly={readOnly} />
+      </>
+    )
+  }
+
+  // Generic portal view
+  const portalFields = oem?.portal_fields || []
+  const [copied, setCopied] = useState(null)
+
+  function copyField(id, value) {
+    navigator.clipboard.writeText(value || '').catch(() => {})
+    setCopied(id)
+    setTimeout(() => setCopied(null), 1500)
+  }
+
+  function copyAll() {
+    const lines = portalFields.length > 0
+      ? portalFields.map(f => `${f.name || f.fieldId}:\n${portalOutput[f.fieldId] || ''}`)
+      : Object.entries(portalOutput).filter(([k]) => k !== 'analysis_notes').map(([k, v]) => `${k}:\n${v}`)
+    navigator.clipboard.writeText(lines.join('\n\n')).catch(() => {})
+  }
+
+  const entries = portalFields.length > 0
+    ? portalFields.map(f => ({ id: f.fieldId, label: f.name || f.fieldId, value: portalOutput[f.fieldId] || '', maxChars: f.maxChars, required: f.required }))
+    : Object.entries(portalOutput)
+        .filter(([k]) => k !== 'analysis_notes')
+        .map(([k, v]) => ({ id: k, label: k, value: String(v), maxChars: null, required: false }))
+
+  return (
+    <>
+      <PromptCaption usedPromptName={usedPromptName} claimIds={claimIds} onOpenSwitcher={openSwitcher} />
+      {showSwitcher && (
+        <PromptSwitcher
+          prompts={availPrompts}
+          currentId={usedPromptId}
+          selectedPid={selectedPid}
+          onSelect={setSelectedPid}
+          onConfirm={switchPrompt}
+          onClose={() => setShowSwitcher(false)}
+        />
+      )}
+
+      <div className="card" style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h2 className="card-title">Portal View</h2>
+            <p className="card-subtitle">
+              Results formatted to match {oem?.name || 'OEM'} portal structure. Click any field to copy.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={copyAll}>📋 Copy All</button>
+            {onReset && <button className="btn btn-ghost btn-sm" onClick={onReset}>↩ New Claim</button>}
+          </div>
+        </div>
+      </div>
+
+      {entries.length === 0 && !portalOutput.analysis_notes ? (
+        <div className="card">
+          <div style={{ fontSize: 13, color: 'var(--grey-muted)', whiteSpace: 'pre-wrap', fontFamily: 'monospace', background: 'var(--grey-bg)', padding: '12px 14px', borderRadius: 6 }}>
+            {aiRawResponse}
+          </div>
         </div>
       ) : (
-        <>
-          {/* Search */}
-          <input
-            className="field-input"
-            placeholder="Filter by OEM or machine model…"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            style={{ marginBottom:12, width:'100%' }}
-          />
-
-          <div className="cfg-list">
-            {filtered.map(row => {
-              const count = docCount(row)
-              return (
-                <div
-                  key={row.machineId}
-                  className={`cfg-item ${selected?.machineId===row.machineId?'sel':''}`}
-                  onClick={() => setSelected(row)}
-                >
-                  <div>
-                    <div className="cfg-item-name">
-                      {row.oemName}
-                      <span style={{ fontWeight:400, color:'var(--grey-muted)', marginLeft:8, fontSize:14 }}>
-                        {row.machineModel}
-                      </span>
-                    </div>
-                    <div className="cfg-item-meta">
-                      {count}/4 documents ·{' '}
-                      {(row.job_card_fields||[]).length} job card fields ·{' '}
-                      {(row.portal_fields||[]).length} portal fields
-                      {count < 4 && <span style={{ color:'var(--warn)', marginLeft:6 }}>⚠ Partial setup</span>}
-                    </div>
-                  </div>
-                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    {/* Doc dots */}
-                    <div style={{ display:'flex', gap:3 }}>
-                      {['warranty_policy','portal_structure','machine_handbook','historic_claims'].map(t => {
-                        const has = (row.documents||[]).some(d => d.doc_type===t)
-                        return <span key={t} style={{ width:7, height:7, borderRadius:'50%', background: has ? 'var(--ok)' : 'var(--grey-border)', display:'inline-block' }} />
-                      })}
-                    </div>
-                    {selected?.machineId===row.machineId && <span className="cfg-sel-badge">Selected</span>}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 14 }}>
+          {entries.map((f, idx) => {
+            const over   = f.maxChars && (f.value?.length || 0) > f.maxChars
+            const isLast = idx === entries.length - 1
+            return (
+              <div key={f.id} style={{ borderBottom: isLast ? 'none' : '1px solid var(--grey-border)', paddingBottom: isLast ? 0 : 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                    {f.label}{f.required && <span style={{ color: 'var(--crit)', marginLeft: 2 }}>*</span>}
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {f.maxChars && <span style={{ fontSize: 11, color: over ? 'var(--crit)' : 'var(--grey-muted)' }}>{f.value?.length || 0}/{f.maxChars}</span>}
+                    <button className="btn btn-ghost btn-xs" onClick={() => copyField(f.id, f.value)} style={{ color: copied === f.id ? 'var(--ok)' : undefined }}>
+                      {copied === f.id ? '✓ Copied' : 'Copy'}
+                    </button>
                   </div>
                 </div>
-              )
-            })}
-          </div>
+                <div
+                  style={{ padding: '10px 12px', borderRadius: 6, border: `1.5px solid ${over ? 'var(--crit-ring)' : 'var(--grey-border)'}`, fontSize: 13, lineHeight: 1.5, cursor: 'pointer', color: f.value ? 'var(--text)' : 'var(--grey-muted)', fontStyle: f.value ? 'normal' : 'italic', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                  onClick={() => copyField(f.id, f.value)}
+                  title="Click to copy"
+                >
+                  {f.value || '(no value generated)'}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
-          {selected && (
-            <div style={{ marginTop:16, display:'flex', gap:8 }}>
-              <button className="btn btn-primary" onClick={() => onSelect(selected)}>
-                Use {selected.oemName} {selected.machineModel} →
-              </button>
-            </div>
-          )}
-        </>
+      {portalOutput.analysis_notes && (
+        <div className="card">
+          <h3 className="sec-title">Analysis Notes</h3>
+          <div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+            {portalOutput.analysis_notes}
+          </div>
+        </div>
+      )}
+
+      {onReset && (
+        <div style={{ marginTop: 8 }}>
+          <button className="btn btn-navy" onClick={onReset}>↩ Start New Claim</button>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Prompt caption bar ────────────────────────────────────────────────────────
+function PromptCaption({ usedPromptName, claimIds, onOpenSwitcher }) {
+  return (
+    <div style={{ marginBottom: 12, fontSize: 12, color: 'var(--grey-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {usedPromptName && (
+          <span>Analysed using prompt: <strong style={{ color: 'var(--navy)' }}>{usedPromptName}</strong></span>
+        )}
+        {claimIds && claimIds.length > 1 && (
+          <span style={{ color: 'var(--warn)', fontWeight: 600 }}>
+            · {claimIds.length} job cards — showing first
+          </span>
+        )}
+      </div>
+      {onOpenSwitcher && (
+        <button
+          onClick={onOpenSwitcher}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--navy)', fontSize: 12, fontWeight: 600, padding: 0,
+            textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline' }}
+          onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
+        >
+          ↔ Switch Prompt
+        </button>
       )}
     </div>
   )
 }
 
-// ── Step 2: Job Card Upload ───────────────────────────────────────────────────
-function StepJobCard({ machine, onDone, onBack }) {
-  const [file,     setFile]    = useState(null)
-  const [drag,     setDrag]    = useState(false)
-  const [phase,    setPhase]   = useState('idle')
-  const [error,    setError]   = useState(null)
-  const [jobRef,   setJobRef]  = useState('')
-  const [engineer, setEngineer]= useState('')
-  const fileRef = useRef()
-
-  async function handleProcess() {
-    if (!file) return
-    setError(null)
-    try {
-      setPhase('extracting')
-      const fd = new FormData()
-      fd.append('pdf',       file)
-      fd.append('machineId', machine.machineId)
-      if (jobRef)   fd.append('jobRef',   jobRef)
-      if (engineer) fd.append('engineer', engineer)
-
-      const r1 = await fetch('/api/jobcard/upload', { method:'POST', body:fd })
-      if (!r1.ok) { const e = await r1.json(); throw new Error(e.error||'Extraction failed') }
-      const { sessionId } = await r1.json()
-
-      setPhase('enriching')
-      const r2 = await fetch(`/api/jobcard/enrich/${sessionId}`, { method:'POST' })
-      if (!r2.ok) { const e = await r2.json(); throw new Error(e.error||'Enrichment failed') }
-
-      const r3 = await fetch(`/api/session/${sessionId}`)
-      onDone(sessionId, await r3.json())
-    } catch(e) {
-      setError(e.message); setPhase('idle')
-    }
-  }
-
-  if (phase==='extracting') return (
-    <div className="loader">
-      <div className="spinner" />
-      <div className="loader-title">Extracting job card fields…</div>
-      <div className="loader-sub">Detecting content type · {machine.oemName} {machine.machineModel}</div>
-    </div>
-  )
-  if (phase==='enriching') return (
-    <div className="loader">
-      <div className="spinner" />
-      <div className="loader-title">Enriching against policy…</div>
-      <div className="loader-sub">Using all uploaded reference documents</div>
-    </div>
-  )
-
+// ── Prompt switcher modal ─────────────────────────────────────────────────────
+function PromptSwitcher({ prompts, currentId, selectedPid, onSelect, onConfirm, onClose }) {
   return (
-    <div className="card">
-      <div style={{ marginBottom:14 }}>
-        <button className="btn btn-ghost btn-sm" onClick={onBack}>← Change Machine</button>
-      </div>
-      <div className="card-head">
-        <h2 className="card-title">Upload Job Card</h2>
-        <p className="card-subtitle">
-          Engineer job card for <strong>{machine.oemName} {machine.machineModel}</strong>.
-          Scanned and handwritten PDFs are supported.
-        </p>
-      </div>
-
-      {error && <div className="err">{error}</div>}
-
-      <div className="meta-grid" style={{ marginBottom:16 }}>
-        <div className="field-group">
-          <label className="field-label">Job Reference</label>
-          <input className="field-input" placeholder="JC-2024-0042" value={jobRef} onChange={e => setJobRef(e.target.value)} />
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: 'var(--white)', borderRadius: 10, width: 480, maxHeight: '70vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,.2)' }}>
+        <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid var(--grey-border)' }}>
+          <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--navy)', marginBottom: 4 }}>Switch Prompt</div>
+          <div style={{ fontSize: 12, color: 'var(--grey-muted)' }}>Select a different prompt and re-run the analysis.</div>
         </div>
-        <div className="field-group">
-          <label className="field-label">Engineer</label>
-          <input className="field-input" placeholder="J. Smith" value={engineer} onChange={e => setEngineer(e.target.value)} />
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {prompts === null ? (
+            <div className="loader"><div className="spinner" style={{ width: 24, height: 24, borderWidth: 2 }} /></div>
+          ) : prompts.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--grey-muted)', fontStyle: 'italic' }}>No prompts found. Add some in Custom Prompts.</div>
+          ) : prompts.map(p => (
+            <div
+              key={p.id}
+              onClick={() => onSelect(p.id)}
+              style={{
+                padding: '10px 12px', borderRadius: 7, cursor: 'pointer',
+                border: `1.5px solid ${selectedPid === p.id ? 'var(--cyan)' : 'var(--grey-border)'}`,
+                background: selectedPid === p.id ? 'var(--cyan-soft)' : p.id === currentId ? 'var(--grey-bg)' : 'var(--white)',
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--navy)', marginBottom: 2 }}>
+                {p.name}
+                {p.id === currentId && <span style={{ marginLeft: 7, fontSize: 10, color: 'var(--grey-muted)', fontWeight: 400 }}>current</span>}
+                {p.is_default ? <span style={{ marginLeft: 7, fontSize: 10, color: 'var(--ok)', fontWeight: 700 }}>default</span> : null}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--grey-muted)' }}>{p.category}{p.brand ? ` · ${p.brand}` : ' · All Brands'}</div>
+            </div>
+          ))}
         </div>
-      </div>
-
-      <div
-        className={`drop-zone ${drag?'over':''}`}
-        onClick={() => fileRef.current.click()}
-        onDragOver={e => { e.preventDefault(); setDrag(true) }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={e => { e.preventDefault(); setDrag(false); setFile(e.dataTransfer.files[0]) }}
-      >
-        <input ref={fileRef} type="file" accept="application/pdf" onChange={e => setFile(e.target.files[0])} />
-        <div className="drop-zone-icon">📋</div>
-        <div className="drop-zone-title">{file ? file.name : 'Drop job card PDF here'}</div>
-        <div className="drop-zone-sub">
-          {file ? `${(file.size/1024).toFixed(0)} KB` : 'Digital or scanned/handwritten · Click to browse'}
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--grey-border)', display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" disabled={!selectedPid || selectedPid === currentId} onClick={onConfirm}>
+            Re-run Analysis
+          </button>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
         </div>
-      </div>
-
-      <div style={{ marginTop:14, display:'flex', gap:8 }}>
-        <button className="btn btn-primary" disabled={!file} onClick={handleProcess}>
-          Extract &amp; Enrich →
-        </button>
-        {file && <button className="btn btn-ghost" onClick={() => setFile(null)}>Clear</button>}
       </div>
     </div>
   )
