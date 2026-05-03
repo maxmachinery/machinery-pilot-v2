@@ -76,60 +76,49 @@ export default function NewClaim() {
   }
 
   return (
-    <div className="claim-layout">
-      {/* Step rail */}
-      <div className="step-rail">
-        <div className="card" style={{ padding: '16px 14px' }}>
-          {STEPS.map((s, i) => (
-            <div key={s.n}>
-              <div className={`step-rail-item ${step===s.n?'active':step>s.n?'done':''}`}>
-                <div className={`step-num ${step===s.n?'active':step>s.n?'done':''}`}>
-                  {step > s.n ? '✓' : s.n}
-                </div>
-                {s.label}
-              </div>
-              {i < STEPS.length - 1 && <div className="step-rail-line" />}
-            </div>
-          ))}
-          {selectedOem && (
-            <>
-              <div className="divider" style={{ margin: '14px 0' }} />
-              <div style={{ fontSize: 11, color: 'var(--grey-muted)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, marginBottom: 5 }}>OEM</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{selectedOem.name}</div>
-            </>
-          )}
+    <div>
+      {selectedOem && (
+        <div style={{ marginBottom: 14 }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '4px 10px', borderRadius: 20,
+            border: '1.5px solid var(--grey-border)',
+            background: 'var(--grey-bg)',
+            fontSize: 12, fontWeight: 600, color: 'var(--navy)',
+            fontFamily: 'Barlow, sans-serif',
+          }}>
+            <span style={{ fontSize: 10, color: 'var(--grey-muted)', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 700 }}>OEM</span>
+            {selectedOem.name}
+          </span>
         </div>
-      </div>
+      )}
 
-      {/* Step content */}
-      <div>
-        {step === 1 && !processing && (
-          <StepJobCard onDone={handleStep1Done} error={processError} />
-        )}
-        {processing && (
-          <div className="loader">
-            <div className="spinner" />
-            <div className="loader-title">Processing</div>
-            <div className="loader-sub">
-              Working on {uploadedFiles.length} document{uploadedFiles.length !== 1 ? 's' : ''}
-            </div>
+      {step === 1 && !processing && (
+        <StepJobCard onDone={handleStep1Done} error={processError} />
+      )}
+      {processing && (
+        <div className="loader">
+          <div className="spinner" />
+          <div className="loader-title">Processing</div>
+          <div className="loader-sub">
+            Working on {uploadedFiles.length} document{uploadedFiles.length !== 1 ? 's' : ''}
           </div>
-        )}
-        {step === 2 && !processing && (
-          <StepPortalView
-            claimId={claimId}
-            claimIds={claimIds}
-            portalOutput={portalOutput}
-            aiRawResponse={aiRawResponse}
-            oem={selectedOem}
-            uploadedFiles={uploadedFiles}
-            usedPromptId={usedPromptId}
-            usedPromptName={usedPromptName}
-            onRerun={(promptId) => runProcess(uploadedFiles, selectedOem, promptId)}
-            onReset={handleReset}
-          />
-        )}
-      </div>
+        </div>
+      )}
+      {step === 2 && !processing && (
+        <StepPortalView
+          claimId={claimId}
+          claimIds={claimIds}
+          portalOutput={portalOutput}
+          aiRawResponse={aiRawResponse}
+          oem={selectedOem}
+          uploadedFiles={uploadedFiles}
+          usedPromptId={usedPromptId}
+          usedPromptName={usedPromptName}
+          onRerun={(promptId) => runProcess(uploadedFiles, selectedOem, promptId)}
+          onReset={handleReset}
+        />
+      )}
     </div>
   )
 }
