@@ -22,6 +22,12 @@ const TITLES = {
 export default function App() {
   const [page,          setPage]          = useState('claim')
   const [selectedBrand, setSelectedBrand] = useState(null)
+  const [claimKey,      setClaimKey]      = useState(0)
+
+  function handleNavigate(id) {
+    if (id === 'claim') setClaimKey(k => k + 1)
+    setPage(id)
+  }
 
   function handleSelectBrand(brandName) {
     setSelectedBrand(brandName)
@@ -35,7 +41,7 @@ export default function App() {
       <div className="shell">
         <Sidebar
           currentPage={page}
-          onNavigate={setPage}
+          onNavigate={handleNavigate}
           onSelectBrand={handleSelectBrand}
         />
 
@@ -46,7 +52,7 @@ export default function App() {
           </div>
 
           <div className="page-body">
-            {page === 'claim'     && <NewClaim />}
+            {page === 'claim'     && <NewClaim key={claimKey} />}
             {page === 'history'   && <ClaimHistory />}
             {page === 'assistant' && <WarrantyAssistant />}
             {page === 'library'   && <OEMLibrary onStartClaim={() => setPage('claim')} />}

@@ -114,6 +114,9 @@ db.exec(`
 addCol('claims', 'custom_prompt_id', 'INTEGER', null);
 addCol('claims', 'updated_at',       'DATETIME', null);
 
+// ── One-time cleanup: remove Altendorf rows added during De Groot rebranding ─
+db.prepare("DELETE FROM oem_configs WHERE lower(name) = 'altendorf'").run();
+
 // ── Assistant queries table ───────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS assistant_queries (

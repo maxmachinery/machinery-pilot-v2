@@ -7,7 +7,7 @@ export default function AppScaler({ children }) {
 
   useEffect(() => {
     function update() {
-      const newScale = Math.min(1, window.innerWidth / DESIGN_WIDTH)
+      const newScale = Math.min(1, (window.innerWidth / DESIGN_WIDTH) * 1.2)
       setScale(newScale)
     }
     update()

@@ -328,19 +328,6 @@ export default function TerexPortalView({ data = {}, onReset, claimId, onStatusC
                 </span>
               )}
             </div>
-            {onReset && (
-              <button
-                onClick={onReset}
-                style={{
-                  background: '#3B9B53', border: 'none', color: '#fff',
-                  padding: '8px 18px', fontSize: 12, fontFamily: FONT,
-                  fontWeight: 700, cursor: 'pointer', borderRadius: 4,
-                  transition: 'background .15s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#2f7d42' }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#3B9B53' }}
-              >+ New Claim</button>
-            )}
           </div>
 
           {/* ── Metadata block ───────────────────────────────────────────── */}
