@@ -252,28 +252,33 @@ export default function TerexPortalView({ data = {}, onReset, claimId, onStatusC
     'description', 'suspect_cause', 'action_taken',
   ]
 
-  async function copyPasteToPortal() {
-    const text = DETAILS_FIELDS_ORDER.map(key => (fields[key] ?? '').toString()).join('\n')
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch (err) {
-      console.error('Clipboard write failed:', err)
-      setCtaStatus('Copy failed — check browser permissions')
+  async function copyDemoField() {
+    const value = (fields.action_taken ?? '').toString()
+
+    if (!value.trim()) {
+      setCtaStatus('No Action Taken text to copy')
       setTimeout(() => setCtaStatus(''), 2500)
       return
     }
-    if (claimId) {
-      try {
+
+    try {
+      await navigator.clipboard.writeText(value)
+
+      if (claimId) {
         await fetch(`/api/claims/${claimId}/status`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: 'copied_to_oem_portal' }),
         })
         onStatusChange?.('copied_to_oem_portal')
-      } catch {}
+      }
+
+      setCtaStatus('✓ Action Taken copied — paste into Terex portal')
+      setTimeout(() => setCtaStatus(''), 3000)
+    } catch (err) {
+      console.error('Clipboard write failed:', err)
+      setCtaStatus('Copy failed — check browser permissions')
     }
-    setCtaStatus('✓ Copied — paste into Terex portal')
-    setTimeout(() => setCtaStatus(''), 2500)
   }
 
   const TABS = [
@@ -484,19 +489,27 @@ export default function TerexPortalView({ data = {}, onReset, claimId, onStatusC
                 {ctaStatus}
               </span>
             )}
-            <button
-              onClick={copyPasteToPortal}
-              style={{
-                background: '#FF8300', color: '#fff', border: 'none',
-                padding: '12px 24px', fontSize: 14, fontFamily: FONT, fontWeight: 700,
-                letterSpacing: '0.05em', cursor: 'pointer', borderRadius: 4,
-                transition: 'background .15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#E07500' }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#FF8300' }}
-            >
-              Copy-Paste to Portal
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <button
+                onClick={copyDemoField}
+                style={{
+                  background: '#FF8300', color: '#fff', border: 'none',
+                  padding: '12px 24px', fontSize: 14, fontFamily: FONT, fontWeight: 700,
+                  letterSpacing: '0.05em', cursor: 'pointer', borderRadius: 4,
+                  transition: 'background .15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#E07500' }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#FF8300' }}
+              >
+                Copy-Paste set fields to Terex Portal
+              </button>
+              <span style={{
+                fontSize: 11, fontFamily: FONT, color: '#6B7280',
+                fontStyle: 'italic', marginTop: 4, textAlign: 'right',
+              }}>
+                Disclaimer: Set field Action Taken only for demo purposes
+              </span>
+            </div>
           </div>
 
       </div>
