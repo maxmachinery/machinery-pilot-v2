@@ -1,10 +1,23 @@
 import Database from 'better-sqlite3';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-export const db = new Database(join(__dirname, 'warranty.db'));
+const dbPath   = process.env.DB_PATH || join(__dirname, 'warranty.db');
+const seedPath = join(__dirname, 'seed', 'warranty.seed.db');
+
+// First-boot seed: if running in production with an empty volume
+// and a seed file exists in the repo, copy it once.
+if (process.env.DB_PATH && !fs.existsSync(dbPath) && fs.existsSync(seedPath)) {
+  console.log('[DB] First boot detected — seeding from', seedPath);
+  fs.mkdirSync(dirname(dbPath), { recursive: true });
+  fs.copyFileSync(seedPath, dbPath);
+  console.log('[DB] Seed copy complete');
+}
+
+export const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 
 // ── Core tables ────────────────────────────────────────────────────────────
@@ -130,6 +143,14 @@ db.exec(`
   );
 `);
 
+// Rename legacy seed name and restore as default
+db.prepare("UPDATE custom_prompts SET name='Warranty Job Card Extraction Prompt', is_default=1 WHERE name='Standard Warranty Extraction'").run();
+// Ensure only the canonical global default has is_default=1 (clear others for same category+no brand)
+const _canonical = db.prepare("SELECT id FROM custom_prompts WHERE name='Warranty Job Card Extraction Prompt' AND brand IS NULL").get();
+if (_canonical) {
+  db.prepare("UPDATE custom_prompts SET is_default=0 WHERE brand IS NULL AND category='New Claim' AND id != ?").run(_canonical.id);
+}
+
 // Seed the standard extraction prompt on first run
 const _promptCount = db.prepare('SELECT COUNT(*) as c FROM custom_prompts').get();
 if (_promptCount.c === 0) {
@@ -209,9 +230,9 @@ Return only the JSON array. No preamble, no commentary, no markdown fences, no e
 
   db.prepare(`
     INSERT INTO custom_prompts (name, category, brand, is_default, prompt_text)
-    VALUES ('Standard Warranty Extraction', 'New Claim', NULL, 1, ?)
+    VALUES ('Warranty Job Card Extraction Prompt', 'New Claim', NULL, 1, ?)
   `).run(STANDARD_WARRANTY_PROMPT);
-  console.log('[DB] seeded default prompt: Standard Warranty Extraction');
+  console.log('[DB] seeded default prompt: Warranty Job Card Extraction Prompt');
 }
 
 // Migrate legacy "processed" status to "ready"

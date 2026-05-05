@@ -967,12 +967,17 @@ app.post('/api/claim/process', async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 
 app.get('/api/claims', (_req, res) => {
-  const rows = db.prepare('SELECT * FROM claims ORDER BY created_at DESC').all();
+  const rows = db.prepare(`
+    SELECT c.*, cp.name AS prompt_name
+    FROM claims c
+    LEFT JOIN custom_prompts cp ON c.custom_prompt_id = cp.id
+    ORDER BY c.created_at DESC
+  `).all();
   res.json(rows.map(r => ({
     ...r,
     uploaded_documents: JSON.parse(r.uploaded_documents || '[]'),
     portal_output:      JSON.parse(r.portal_output      || '{}'),
-    promptPreview:      (r.prompt || '').slice(0, 80),
+    promptPreview:      r.prompt_name || '',
   })));
 });
 

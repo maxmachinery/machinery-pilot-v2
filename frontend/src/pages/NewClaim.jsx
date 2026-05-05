@@ -56,10 +56,10 @@ export default function NewClaim() {
     }
   }
 
-  function handleStep1Done(files, oem) {
+  function handleStep1Done(files, oem, promptId) {
     setUploadedFiles(files)
     setSelectedOem(oem)
-    runProcess(files, oem, null)
+    runProcess(files, oem, promptId || null)
   }
 
   function handleReset() {
@@ -125,11 +125,13 @@ export default function NewClaim() {
 
 // ── Step 1: Job Card upload + OEM brand selection ─────────────────────────────
 function StepJobCard({ onDone, error: externalError }) {
-  const [files,         setFiles]         = useState([])
-  const [oems,          setOems]          = useState(null)
-  const [selectedOemId, setSelectedOemId] = useState('')
-  const [drag,          setDrag]          = useState(false)
-  const [error,         setError]         = useState(null)
+  const [files,            setFiles]            = useState([])
+  const [oems,             setOems]             = useState(null)
+  const [selectedOemId,    setSelectedOemId]    = useState('')
+  const [prompts,          setPrompts]          = useState(null)
+  const [selectedPromptId, setSelectedPromptId] = useState('')
+  const [drag,             setDrag]             = useState(false)
+  const [error,            setError]            = useState(null)
   const fileRef = useRef()
 
   useEffect(() => {
@@ -137,7 +139,22 @@ function StepJobCard({ onDone, error: externalError }) {
       .then(r => r.json())
       .then(setOems)
       .catch(() => setOems([]))
+    fetch('/api/prompts')
+      .then(r => r.json())
+      .then(all => setPrompts(all.filter(p => p.category === 'New Claim')))
+      .catch(() => setPrompts([]))
   }, [])
+
+  // Auto-select best default prompt when OEM changes (or on initial prompt load)
+  useEffect(() => {
+    if (!prompts) return
+    const oem   = oems?.find(o => String(o.id) === String(selectedOemId))
+    const brand = (oem?.brand || oem?.name || '').toLowerCase()
+    const brandDefault  = prompts.find(p => p.is_default && p.brand && p.brand.toLowerCase() === brand)
+    const globalDefault = prompts.find(p => p.is_default && !p.brand)
+    const best = brandDefault || globalDefault
+    if (best) setSelectedPromptId(String(best.id))
+  }, [selectedOemId, prompts]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (externalError) setError(externalError)
@@ -169,7 +186,7 @@ function StepJobCard({ onDone, error: externalError }) {
 
   const readyFiles  = files.filter(f => !f.uploading && f.r2_key)
   const selectedOem = oems?.find(o => String(o.id) === String(selectedOemId))
-  const canContinue = readyFiles.length > 0 && selectedOemId && oems?.length > 0
+  const canContinue = readyFiles.length > 0 && selectedOemId && selectedPromptId && oems?.length > 0
 
   return (
     <div className="card">
@@ -200,6 +217,35 @@ function StepJobCard({ onDone, error: externalError }) {
             {oems.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         )}
+      </div>
+
+      {/* Prompt selector */}
+      <div className="field-group" style={{ marginBottom: 18 }}>
+        <label className="field-label">Prompt <span style={{ color: 'var(--crit)' }}>*</span></label>
+        {prompts === null ? (
+          <div style={{ fontSize: 13, color: 'var(--grey-muted)' }}>Loading…</div>
+        ) : prompts.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--warn)', padding: '8px 12px', background: 'var(--warn-bg)', borderRadius: 6, border: '1px solid var(--warn-ring)' }}>
+            No prompts configured — add one in Custom Prompts.
+          </div>
+        ) : (
+          <select
+            className="field-input"
+            value={selectedPromptId}
+            onChange={e => setSelectedPromptId(e.target.value)}
+            style={{ maxWidth: 320 }}
+          >
+            <option value="">Select…</option>
+            {prompts.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name}{p.brand ? ` · ${p.brand}` : ''}
+              </option>
+            ))}
+          </select>
+        )}
+        <div style={{ fontSize: 11, color: 'var(--grey-muted)', marginTop: 5 }}>
+          Manage prompts in the Custom Prompts section. Different OEM brands can have different default prompts.
+        </div>
       </div>
 
       {/* Drop zone */}
@@ -249,7 +295,7 @@ function StepJobCard({ onDone, error: externalError }) {
       )}
 
       <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
-        <button className="btn btn-primary" disabled={!canContinue} onClick={() => onDone(readyFiles, selectedOem)}>
+        <button className="btn btn-primary" disabled={!canContinue} onClick={() => onDone(readyFiles, selectedOem, selectedPromptId)}>
           Continue →
         </button>
       </div>
