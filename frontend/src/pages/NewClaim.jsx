@@ -26,8 +26,9 @@ export default function NewClaim() {
   const [usedPromptName, setUsedPromptName] = useState('')
   const [processing,     setProcessing]     = useState(false)
   const [processError,   setProcessError]   = useState(null)
+  const [pastedText,     setPastedText]     = useState(null)
 
-  async function runProcess(files, oem, promptId) {
+  async function runProcess(files, oem, promptId, pasted) {
     setProcessing(true)
     setProcessError(null)
     try {
@@ -38,6 +39,7 @@ export default function NewClaim() {
           oemConfigId: oem?.id,
           files: files.map(f => ({ r2_key: f.r2_key, filename: f.filename, type: f.type, size: f.size })),
           promptId: promptId || undefined,
+          pastedText: pasted || undefined,
         }),
       })
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Processing failed') }
@@ -56,10 +58,11 @@ export default function NewClaim() {
     }
   }
 
-  function handleStep1Done(files, oem, promptId) {
+  function handleStep1Done(files, oem, promptId, pasted) {
     setUploadedFiles(files)
     setSelectedOem(oem)
-    runProcess(files, oem, promptId || null)
+    setPastedText(pasted || null)
+    runProcess(files, oem, promptId || null, pasted || null)
   }
 
   function handleReset() {
@@ -101,7 +104,9 @@ export default function NewClaim() {
           <div className="spinner" />
           <div className="loader-title">Processing</div>
           <div className="loader-sub">
-            Working on {uploadedFiles.length} document{uploadedFiles.length !== 1 ? 's' : ''}
+            {uploadedFiles.length > 0
+              ? `Working on ${uploadedFiles.length} document${uploadedFiles.length !== 1 ? 's' : ''}`
+              : 'Working on pasted text'}
           </div>
         </div>
       )}
@@ -115,7 +120,7 @@ export default function NewClaim() {
           uploadedFiles={uploadedFiles}
           usedPromptId={usedPromptId}
           usedPromptName={usedPromptName}
-          onRerun={(promptId) => runProcess(uploadedFiles, selectedOem, promptId)}
+          onRerun={(promptId) => runProcess(uploadedFiles, selectedOem, promptId, pastedText)}
           onReset={handleReset}
         />
       )}
@@ -130,6 +135,7 @@ function StepJobCard({ onDone, error: externalError }) {
   const [selectedOemId,    setSelectedOemId]    = useState('')
   const [prompts,          setPrompts]          = useState(null)
   const [selectedPromptId, setSelectedPromptId] = useState('')
+  const [pastedText,       setPastedText]       = useState('')
   const [drag,             setDrag]             = useState(false)
   const [error,            setError]            = useState(null)
   const fileRef = useRef()
@@ -184,9 +190,10 @@ function StepJobCard({ onDone, error: externalError }) {
     }
   }
 
-  const readyFiles  = files.filter(f => !f.uploading && f.r2_key)
-  const selectedOem = oems?.find(o => String(o.id) === String(selectedOemId))
-  const canContinue = readyFiles.length > 0 && selectedOemId && selectedPromptId && oems?.length > 0
+  const readyFiles    = files.filter(f => !f.uploading && f.r2_key)
+  const selectedOem   = oems?.find(o => String(o.id) === String(selectedOemId))
+  const hasPastedText = pastedText.trim().length > 0
+  const canContinue   = (readyFiles.length > 0 || hasPastedText) && selectedOemId && selectedPromptId && oems?.length > 0
 
   return (
     <div className="card">
@@ -248,54 +255,90 @@ function StepJobCard({ onDone, error: externalError }) {
         </div>
       </div>
 
-      {/* Drop zone */}
-      <div
-        className={`drop-zone ${drag ? 'over' : ''}`}
-        onClick={() => fileRef.current.click()}
-        onDragOver={e => { e.preventDefault(); setDrag(true) }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={e => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files) }}
-      >
-        <input ref={fileRef} type="file" accept={ACCEPT} multiple onChange={e => handleFiles(e.target.files)} />
-        <div className="drop-zone-icon">📋</div>
-        <div className="drop-zone-title">Drop job card files here</div>
-        <div className="drop-zone-sub">PDF or Word documents · Click to browse · Multiple files supported</div>
+      {/* ── Two-column upload area ── */}
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
+
+        {/* Left: File upload */}
+        <div style={{ flex: 1, opacity: hasPastedText ? 0.4 : 1, pointerEvents: hasPastedText ? 'none' : 'auto', transition: 'opacity .15s' }}>
+          <div
+            className={`drop-zone ${drag ? 'over' : ''}`}
+            onClick={() => fileRef.current.click()}
+            onDragOver={e => { e.preventDefault(); setDrag(true) }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={e => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files) }}
+          >
+            <input ref={fileRef} type="file" accept={ACCEPT} multiple onChange={e => handleFiles(e.target.files)} />
+            <div className="drop-zone-icon">📋</div>
+            <div className="drop-zone-title">Drop job card files here</div>
+            <div className="drop-zone-sub">PDF or Word documents · Click to browse · Multiple files supported</div>
+          </div>
+          {files.length > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {files.map((f, i) => (
+                <div key={f.tempId || i} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '8px 12px', borderRadius: 6,
+                  background: f.uploading ? 'var(--grey-bg)' : 'rgba(22,163,74,.06)',
+                  border: `1px solid ${f.uploading ? 'var(--grey-border)' : '#86EFAC'}`,
+                }}>
+                  <span style={{ fontSize: 16 }}>{f.type === 'pdf' ? '📄' : '📝'}</span>
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.filename}</span>
+                  <span style={{ fontSize: 11, color: 'var(--grey-muted)', whiteSpace: 'nowrap' }}>{(f.size / 1024).toFixed(0)} KB</span>
+                  {f.uploading
+                    ? <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                    : <span style={{ color: 'var(--ok)', fontWeight: 700 }}>✓</span>
+                  }
+                  {!f.uploading && (
+                    <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--grey-muted)', fontSize: 14, padding: '0 2px' }}
+                      onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}>✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {hasPastedText && (
+            <div style={{ marginTop: 6, fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>
+              Using paste input — clear to use file upload
+            </div>
+          )}
+        </div>
+
+        {/* Centre: OR divider */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 20px' }}>
+          <div style={{ flex: 1, width: 1, background: '#E5E7EB' }} />
+          <span style={{ padding: '10px 0', fontWeight: 700, fontSize: 14, color: '#6B7280', userSelect: 'none' }}>OR</span>
+          <div style={{ flex: 1, width: 1, background: '#E5E7EB' }} />
+        </div>
+
+        {/* Right: Paste textarea */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', opacity: files.length > 0 ? 0.4 : 1, pointerEvents: files.length > 0 ? 'none' : 'auto', transition: 'opacity .15s' }}>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>Paste Prompt Result</div>
+            <div style={{ fontSize: 12, color: 'var(--grey-muted)' }}>Paste raw text from a job card or extracted prompt result</div>
+          </div>
+          <textarea
+            value={pastedText}
+            onChange={e => setPastedText(e.target.value)}
+            placeholder="Paste raw job card text or prompt result here..."
+            style={{
+              flex: 1, minHeight: 160, width: '100%', padding: '12px',
+              border: '1px solid #D1D5DB', borderRadius: 6,
+              fontFamily: 'monospace', fontSize: 13, lineHeight: 1.5,
+              resize: 'vertical', outline: 'none', boxSizing: 'border-box',
+              color: 'var(--text)', background: '#fff',
+            }}
+          />
+          {files.length > 0 && (
+            <div style={{ marginTop: 6, fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>
+              Using file upload — clear files to use paste input
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* File list */}
-      {files.length > 0 && (
-        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {files.map((f, i) => (
-            <div key={f.tempId || i} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 12px', borderRadius: 6,
-              background: f.uploading ? 'var(--grey-bg)' : 'rgba(22,163,74,.06)',
-              border: `1px solid ${f.uploading ? 'var(--grey-border)' : '#86EFAC'}`,
-            }}>
-              <span style={{ fontSize: 16 }}>{f.type === 'pdf' ? '📄' : '📝'}</span>
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {f.filename}
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--grey-muted)', whiteSpace: 'nowrap' }}>
-                {(f.size / 1024).toFixed(0)} KB
-              </span>
-              {f.uploading
-                ? <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-                : <span style={{ color: 'var(--ok)', fontWeight: 700 }}>✓</span>
-              }
-              {!f.uploading && (
-                <button
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--grey-muted)', fontSize: 14, padding: '0 2px' }}
-                  onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
-                >✕</button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
       <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
-        <button className="btn btn-primary" disabled={!canContinue} onClick={() => onDone(readyFiles, selectedOem, selectedPromptId)}>
+        <button className="btn btn-primary" disabled={!canContinue}
+          onClick={() => onDone(readyFiles, selectedOem, selectedPromptId, hasPastedText ? pastedText.trim() : null)}>
           Continue →
         </button>
       </div>

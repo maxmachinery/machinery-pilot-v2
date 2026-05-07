@@ -22,10 +22,12 @@ const TITLES = {
 export default function App() {
   const [page,          setPage]          = useState('claim')
   const [selectedBrand, setSelectedBrand] = useState(null)
-  const [claimKey,      setClaimKey]      = useState(0)
+  const [claimKey,   setClaimKey]   = useState(0)
+  const [historyKey, setHistoryKey] = useState(0)
 
   function handleNavigate(id) {
-    if (id === 'claim') setClaimKey(k => k + 1)
+    if (id === 'claim')   setClaimKey(k => k + 1)
+    if (id === 'history') setHistoryKey(k => k + 1)
     setPage(id)
   }
 
@@ -53,7 +55,7 @@ export default function App() {
 
           <div className="page-body">
             {page === 'claim'     && <NewClaim key={claimKey} />}
-            {page === 'history'   && <ClaimHistory />}
+            {page === 'history'   && <ClaimHistory key={historyKey} />}
             {page === 'assistant' && <WarrantyAssistant />}
             {page === 'library'   && <OEMLibrary onStartClaim={() => setPage('claim')} />}
             {page === 'prompts'   && <CustomPrompts />}

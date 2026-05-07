@@ -1,5 +1,98 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { PortalView } from './NewClaim.jsx'
+
+// ── Files badge (download / view pasted text) ─────────────────────────────────
+function PastedTextModal({ text, onClose }) {
+  function copyAll() { navigator.clipboard.writeText(text).catch(() => {}) }
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: 10, width: 560, maxHeight: '72vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,.2)' }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--grey-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)' }}>Pasted Job Card Text</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--grey-muted)' }}>✕</button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
+          <pre style={{ fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, color: 'var(--text)' }}>{text}</pre>
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--grey-border)' }}>
+          <button className="btn btn-ghost btn-sm" onClick={copyAll}>📋 Copy to clipboard</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FilesBadge({ claim }) {
+  const docs = claim.uploaded_documents || []
+  const [open,       setOpen]       = useState(false)
+  const [modalText,  setModalText]  = useState(null)
+  const ref = useRef()
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!open) return
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  if (docs.length === 0) return <span style={{ color: 'var(--grey-muted)', fontSize: 12 }}>—</span>
+
+  const pastedDoc = docs.find(d => d.type === 'pasted_text')
+  if (pastedDoc) {
+    return (
+      <>
+        <button className="btn btn-ghost btn-xs" onClick={e => { e.stopPropagation(); setModalText(pastedDoc.content) }}>
+          📄 View Text
+        </button>
+        {modalText !== null && <PastedTextModal text={modalText} onClose={() => setModalText(null)} />}
+      </>
+    )
+  }
+
+  const fileDocs = docs.map((d, i) => ({ ...d, idx: i })).filter(d => d.r2_key)
+  if (fileDocs.length === 0) {
+    return <span style={{ color: 'var(--grey-muted)', fontSize: 11 }} title="Original files not available for this claim">—</span>
+  }
+
+  if (fileDocs.length === 1) {
+    return (
+      <a href={`/api/claims/${claim.id}/document/${fileDocs[0].idx}`} download={fileDocs[0].filename}
+        className="btn btn-ghost btn-xs" onClick={e => e.stopPropagation()}>
+        📥 Download
+      </a>
+    )
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button className="btn btn-ghost btn-xs" onClick={e => { e.stopPropagation(); setOpen(o => !o) }}>
+        📥 Download ({fileDocs.length})
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 50,
+          background: '#fff', border: '1px solid var(--grey-border)',
+          borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,.12)',
+          minWidth: 220, padding: 6, marginTop: 2,
+        }} onClick={e => e.stopPropagation()}>
+          {fileDocs.map(doc => (
+            <a key={doc.idx} href={`/api/claims/${claim.id}/document/${doc.idx}`} download={doc.filename}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 4, fontSize: 12, color: 'var(--navy)', textDecoration: 'none' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--grey-bg)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              onClick={() => setOpen(false)}>
+              <span>📄</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.filename}</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 function statusClass(status) {
@@ -117,8 +210,8 @@ export default function ClaimHistory() {
                     {new Date(c.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' })}
                   </td>
                   <td style={{ fontWeight: 600, color: 'var(--navy)' }}>{c.oem_name || '—'}</td>
-                  <td className="muted" style={{ textAlign: 'center' }}>
-                    {(c.uploaded_documents || []).length}
+                  <td onClick={e => e.stopPropagation()}>
+                    <FilesBadge claim={c} />
                   </td>
                   <td className="muted" style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {c.promptPreview || '—'}
@@ -200,14 +293,12 @@ function ClaimDetailView({ claimId, onBack, onStatusChange }) {
         <button
           onClick={onBack}
           style={{
-            background: '#3B9B53', color: '#fff',
-            border: 'none', borderRadius: 4,
-            padding: '8px 18px', fontSize: 12,
-            fontWeight: 700, letterSpacing: '0.05em',
-            cursor: 'pointer', transition: 'background .15s',
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--navy)', fontSize: 13, fontWeight: 600,
+            padding: '4px 0', display: 'flex', alignItems: 'center', gap: 4,
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#2f7d42' }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#3B9B53' }}
+          onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline' }}
+          onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none' }}
         >
           ← Claim History
         </button>
@@ -237,16 +328,23 @@ function ClaimDetailView({ claimId, onBack, onStatusChange }) {
                 <span style={{ fontSize: 16 }}>{doc.type === 'pdf' ? '📄' : '📝'}</span>
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {doc.filename}
+                  {doc.type === 'pasted_text_docx' && (
+                    <span style={{ marginLeft: 6, fontSize: 10, color: '#6B7280', fontWeight: 400, background: '#F3F4F6', padding: '1px 5px', borderRadius: 3, border: '1px solid #E5E7EB' }}>Pasted Text</span>
+                  )}
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--grey-muted)', whiteSpace: 'nowrap' }}>
                   {doc.size ? `${(doc.size / 1024).toFixed(0)} KB` : ''}
                 </span>
-                <a
-                  href={`/api/claims/${claimId}/document/${i}`}
-                  download={doc.filename}
-                  className="btn btn-ghost btn-xs"
-                  onClick={e => e.stopPropagation()}
-                >⬇ Download</a>
+                {doc.r2_key ? (
+                  <a
+                    href={`/api/claims/${claimId}/document/${i}`}
+                    download={doc.filename}
+                    className="btn btn-ghost btn-xs"
+                    onClick={e => e.stopPropagation()}
+                  >⬇ Download</a>
+                ) : (
+                  <span style={{ fontSize: 11, color: 'var(--grey-muted)', fontStyle: 'italic' }}>Not available</span>
+                )}
               </div>
             ))}
           </div>
@@ -260,7 +358,7 @@ function ClaimDetailView({ claimId, onBack, onStatusChange }) {
           readOnly
           value={claim.prompt || ''}
           style={{
-            width: '100%', minHeight: 180, padding: '10px 12px',
+            width: '100%', minHeight: 90, padding: '10px 12px',
             border: '1.5px solid var(--grey-border)', borderRadius: 6,
             fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6,
             color: 'var(--text)', background: 'var(--grey-bg)', resize: 'vertical',

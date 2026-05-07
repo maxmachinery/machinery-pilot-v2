@@ -187,6 +187,17 @@ function findOrCreateMachine(oemName, machineName) {
   return { oem, machine };
 }
 
+// Convert pasted plain text to a .docx buffer
+async function pastedTextToDocxBuffer(text) {
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children: text.split('\n').map(line => new Paragraph({ children: [new TextRun(line || '')] })),
+    }],
+  });
+  return await Packer.toBuffer(doc);
+}
+
 // Fetch uploaded file as Buffer from R2 or local disk
 async function getFileBuffer(r2Key) {
   if (r2Key && r2Key.startsWith('local:')) {
@@ -724,12 +735,16 @@ app.post('/api/claim/upload-files', claimUpload.single('file'), async (req, res)
 // POST /api/claim/process — analyse with Claude Opus, save claim
 app.post('/api/claim/process', async (req, res) => {
   try {
-    const { oemConfigId, prompt: promptOverride, files, promptId, repairDate } = req.body;
+    const { oemConfigId, prompt: promptOverride, files, promptId, repairDate, pastedText } = req.body;
 
-    console.log('[Process] STAGE A — files received:', files?.length);
+    const hasFiles  = Array.isArray(files) && files.length > 0;
+    const hasPasted = typeof pastedText === 'string' && pastedText.trim().length > 0;
+
+    console.log('[Process] STAGE A — files received:', files?.length, '| pastedText length:', pastedText?.length);
     console.log('[Process] STAGE B — promptId:', promptId, 'promptOverride length:', promptOverride?.length);
 
-    if (!files?.length) return res.status(400).json({ error: 'files required' });
+    if (!hasFiles && !hasPasted) return res.status(400).json({ error: 'Provide either files or pasted text' });
+    if (hasFiles  && hasPasted)  return res.status(400).json({ error: 'Provide either files or pasted text, not both' });
 
     const oemRow = oemConfigId ? db.prepare('SELECT * FROM oem_configs WHERE id=?').get(oemConfigId) : null;
     const oem    = oemRow ? parseOemRow(oemRow) : null;
@@ -760,27 +775,44 @@ app.post('/api/claim/process', async (req, res) => {
     const oemLabel = ((oem?.name || '') + ' ' + (oem?.brand || '')).toLowerCase();
     const isTerex  = TEREX_BRANDS.some(b => oemLabel.includes(b));
 
-    // Build message content blocks from uploaded files
+    // Build message content blocks — from files or pasted text
     const contentBlocks = [];
-    for (const f of files) {
-      const buf = await getFileBuffer(f.r2_key);
-      const isDocx = ['doc','docx'].includes((f.type||'').toLowerCase());
-      if (isDocx) {
-        try {
-          const { value: text } = await mammoth.extractRawText({ buffer: buf });
-          contentBlocks.push({ type: 'text', text: `[Document: ${f.filename}]\n${text}` });
-        } catch {
-          contentBlocks.push({ type: 'text', text: `[Document: ${f.filename} — text extraction failed]` });
+    if (hasPasted) {
+      contentBlocks.push({ type: 'text', text: `[Pasted Job Card Content]\n${pastedText.trim()}` });
+    } else {
+      for (const f of files) {
+        const buf = await getFileBuffer(f.r2_key);
+        const isDocx = ['doc','docx'].includes((f.type||'').toLowerCase());
+        if (isDocx) {
+          try {
+            const { value: text } = await mammoth.extractRawText({ buffer: buf });
+            contentBlocks.push({ type: 'text', text: `[Document: ${f.filename}]\n${text}` });
+          } catch {
+            contentBlocks.push({ type: 'text', text: `[Document: ${f.filename} — text extraction failed]` });
+          }
+        } else {
+          contentBlocks.push({
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') },
+          });
         }
-      } else {
-        contentBlocks.push({
-          type: 'document',
-          source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') },
-        });
       }
     }
 
     contentBlocks.push({ type: 'text', text: resolvedPrompt });
+
+    // Upload pasted text as .docx to R2 (best-effort — won't fail the request)
+    let pastedDocxR2Key = null;
+    if (hasPasted) {
+      try {
+        const docxBuf = await pastedTextToDocxBuffer(pastedText.trim());
+        const key = `claims/pasted-${Date.now()}.docx`;
+        const uploaded = await uploadToR2(key, docxBuf, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        if (uploaded) pastedDocxR2Key = key;
+      } catch (e) {
+        console.error('[Process] pastedText docx upload failed:', e.message);
+      }
+    }
 
     console.log('[Process] STAGE C — Anthropic call starting, isTerex:', isTerex, 'OEM:', oem?.name || 'none');
 
@@ -857,7 +889,14 @@ app.post('/api/claim/process', async (req, res) => {
       VALUES (?,?,?,?,?,?,?,?,?,'ready')
     `);
 
-    const docJson = JSON.stringify(files.map(f => ({ filename: f.filename, size: f.size || 0, type: f.type, r2_key: f.r2_key })));
+    const docJson = hasPasted
+      ? JSON.stringify([{
+          type: 'pasted_text_docx',
+          filename: 'pasted-job-card.docx',
+          size: pastedText.trim().length,
+          ...(pastedDocxR2Key ? { r2_key: pastedDocxR2Key } : { content: pastedText.trim() }),
+        }])
+      : JSON.stringify(files.map(f => ({ filename: f.filename, size: f.size || 0, type: f.type, r2_key: f.r2_key })));
 
     if (parsedArray && parsedArray.length > 0) {
       // ── New universal prompt — array response ─────────────────────────────
