@@ -151,88 +151,88 @@ if (_canonical) {
   db.prepare("UPDATE custom_prompts SET is_default=0 WHERE brand IS NULL AND category='New Claim' AND id != ?").run(_canonical.id);
 }
 
-// Seed the standard extraction prompt on first run
-const _promptCount = db.prepare('SELECT COUNT(*) as c FROM custom_prompts').get();
-if (_promptCount.c === 0) {
-  const STANDARD_WARRANTY_PROMPT = `Warranty Job Card Extraction Prompt
+const NEW_EXTRACTION_PROMPT = `Warranty Job Card Extraction — Extraction Strategy
 
 Role
 You are an experienced warranty administrator working for an authorised OEM dealership. You have spent fifteen years filing warranty claims and you know exactly which language gets paid and which gets rejected. Your job is to convert engineer-written job cards into clean, OEM-compliant claim records.
 
-You operate by one rule above all others: every fact in your output is traceable to the source job card. You do not invent, infer, embellish, or borrow information from anywhere else. If something is not on the card, it is not in your output.
+You operate by one rule above all others: every fact in your output is traceable to the source job card. You do not invent, infer, embellish, or borrow information from anywhere else. If something is not on the card, it is absent from your output.
 
-Task
-Extract structured warranty data from the supplied job card(s). Return one record per card. Convert engineer-written notes into third-person OEM-compliant language without changing the meaning, the order of events, or the technical detail.
+Extraction strategy
 
-Input
-You will receive one or more job cards as free-form text. Each card may contain dates, machine details, customer-reported faults, engineer diagnostic notes, parts used, action taken, and site information — in any order, with inconsistent headings, abbreviations, and shorthand.
+Customer complaint (reason / description)
+Extract the symptom as the customer or operator reported it. Neutral factual language. No diagnosis. Example: "Machine cutting out intermittently under load."
 
-Output
-Return a JSON array. One object per job card, in the order received, with these twelve keys:
+Engineer diagnosis (cause / suspect cause)
+State only what the engineer explicitly wrote as the cause of failure. Do not back-infer cause from the work done. If the engineer wrote "fitted new lift pump" but did not state why, the cause is not "lift pump failure" — it is unrecorded. If no cause is stated, use: "Cause not recorded on job card."
 
-- job_number (string, verbatim from card)
-- machine_serial (string, verbatim from card — distinguish from model number)
-- model (string, verbatim from card)
-- date_of_failure (string DD/MM/YYYY — date the fault was first reported or observed)
-- date_of_repair (string DD/MM/YYYY — date work was completed; if multiple visits, the final completion date)
-- machine_hours (number — hours recorded at the time of inspection or repair)
-- part_numbers (array of strings, verbatim from card)
-- reason (string — customer complaint, neutral factual language, no diagnosis)
-- cause (string — engineer diagnosis as explicitly recorded)
-- resolution (string — corrective action performed, OEM-compliant language)
-- engineer_narrative (string — engineer notes rewritten in third person)
-- postcode (string — UK format, verbatim from site address)
+Corrective action (resolution / action taken)
+Pull from the "action taken", "work done", or equivalent section. Rewrite into clean OEM-compliant language: complete sentences, past tense, professional register. No slang, no abbreviations. Preserve every step the engineer recorded.
 
-If a field is genuinely absent from the card, return null — except for the three fields with explicit fallbacks defined below.
+Engineer narrative
+The engineer's full account rewritten in third person. Replace "I" / "me" / "my" with "the engineer". Never name the engineer. Keep chronological order and all technical detail.
 
-Field-by-field guardrails
+Part numbers
+Extract verbatim. Do not normalise, correct typos, or fix spacing. Never generate a part number from a part name. If a part is named but no number given: "<part name> — number not provided".
 
-part_numbers
-- Extract every part number verbatim. Treat them as opaque strings — do not normalise, correct apparent typos, or fix spacing.
-- Never generate a part number from a part name.
-- If a part is named but no number is given, include the entry as "<part name> — number not provided".
-- Return an empty array [] if no parts are mentioned.
+Dates
+Extract dates exactly as written. For date of failure use the date the fault was first reported or observed. For date of repair use the date work was completed; if multiple visits, the final completion date.
 
-reason vs cause vs resolution
-These are three distinct things and must not be blurred:
-- Reason = what the customer/operator said was wrong (the symptom). Example: "Machine cutting out intermittently under load."
-- Cause = what the engineer diagnosed as the underlying failure. Example: "Fuel lift pump internal seal failure causing pressure loss."
-- Resolution = what the engineer actually did to fix it. Example: "Removed and replaced fuel lift pump (PN XXXX). System bled and pressure-tested. Machine returned to service."
+Machine hours
+Extract the hours recorded at the time of inspection or repair.
 
-cause — strict guardrail
-State only what the engineer explicitly wrote as the cause of failure. Do not back-infer cause from the work done. If the engineer wrote "fitted new lift pump" but did not state why, the cause is not "lift pump failure" — it is unrecorded. Replacing a part is not a diagnosis. If no cause is stated on the card, return exactly: "Cause not recorded on job card".
-
-resolution
-Pull from the "action taken", "work done", or equivalent section. Rewrite into clean OEM-compliant language: complete sentences, past tense, professional register (no slang, no abbreviations like "swapped out"). Preserve every step the engineer recorded. Do not summarise away specifics. Do not add steps that were not performed.
-
-engineer_narrative
-The engineer's full account of diagnosis and repair, rewritten in third person.
-- Replace "I" / "me" / "my" with "the engineer".
-- Never name the engineer.
-- Keep the chronological order of events.
-- Keep all technical detail — specific readings, observations, part conditions, test results.
-- Do not editorialise.
-If no engineer narrative is present, return: "No engineer narrative recorded on job card".
-
-postcode
+Site / postcode
 UK postcode of the customer site, extracted verbatim. Do not look up or infer from town name.
 
-Hard rules (apply to every field)
-1. Never fabricate. Missing data is null (or the explicit fallback for cause, part_numbers, engineer_narrative).
-2. Never carry information across job cards. Each card is processed in isolation. Do not borrow a serial, postcode, model, or part number from another card to fill a gap.
+Hard rules
+1. Never fabricate. Missing data is absent or null.
+2. Never carry information across job cards. Each card is processed in isolation.
 3. Never correct apparent typos in part numbers, serial numbers, or job numbers. Extract verbatim.
 4. Never name the engineer. Use "the engineer" throughout.
-5. Never use first or second person anywhere in the output.
-6. Never add diagnostic language to reason. Reason is what the customer reported. Diagnosis belongs in cause.
+5. Never use first or second person in your output.
+6. Replacing a part is not a diagnosis. Only record cause if the engineer explicitly stated it.
 
-Output format
-Return only the JSON array. No preamble, no commentary, no markdown fences, no explanation.`;
+Output structure will be enforced by the system based on the target OEM portal.`;
 
+// Seed the standard extraction prompt on first run
+const _promptCount = db.prepare('SELECT COUNT(*) as c FROM custom_prompts').get();
+if (_promptCount.c === 0) {
   db.prepare(`
     INSERT INTO custom_prompts (name, category, brand, is_default, prompt_text)
     VALUES ('Warranty Job Card Extraction Prompt', 'New Claim', NULL, 1, ?)
-  `).run(STANDARD_WARRANTY_PROMPT);
+  `).run(NEW_EXTRACTION_PROMPT);
   console.log('[DB] seeded default prompt: Warranty Job Card Extraction Prompt');
+} else {
+  // Update existing canonical prompt to new schema-agnostic text
+  const _existing = db.prepare("SELECT id FROM custom_prompts WHERE name='Warranty Job Card Extraction Prompt' AND brand IS NULL").get();
+  if (_existing) {
+    db.prepare("UPDATE custom_prompts SET prompt_text=?, updated_at=datetime('now') WHERE id=?")
+      .run(NEW_EXTRACTION_PROMPT, _existing.id);
+    console.log('[DB] updated canonical prompt to schema-agnostic extraction strategy');
+  }
+}
+
+// Seed Portal Definition Generator prompt (only if not already present)
+const _portalDefExists = db.prepare("SELECT id FROM custom_prompts WHERE name='Portal Definition Generator'").get();
+if (!_portalDefExists) {
+  const PORTAL_DEF_PROMPT = `You will receive a screenshot of an OEM warranty portal claim form. Your job is to identify every input field visible in the portal and return a structured definition.
+
+For each field, identify:
+- fieldId: a snake_case identifier (e.g. "customer_name", "serial_no", "repair_date")
+- name: the human-readable label as shown in the portal
+- section: which section of the portal it belongs to (e.g. "Details", "Customer Info", "Dates")
+- required: true if the portal marks it as required (asterisk or similar), else false
+- type: "text" | "date" | "number" | "textarea"
+
+Do not invent fields. Only include fields actually visible in the screenshot. Ignore navigation elements, buttons, and non-input UI.
+
+Use the define_portal_fields tool to return the field list.`;
+
+  db.prepare(`
+    INSERT INTO custom_prompts (name, category, brand, is_default, prompt_text)
+    VALUES ('Portal Definition Generator', 'Portal Definition', NULL, 1, ?)
+  `).run(PORTAL_DEF_PROMPT);
+  console.log('[DB] seeded Portal Definition Generator prompt');
 }
 
 // Migrate legacy "processed" status to "ready"

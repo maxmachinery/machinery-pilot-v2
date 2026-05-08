@@ -496,6 +496,88 @@ app.get('/api/oem/:id', (req, res) => {
   res.json(parseOemRow(row));
 });
 
+// Multer for screenshot uploads — accepts PNG/JPEG
+const screenshotUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+// POST /api/oem/:oemId/generate-portal-schema — generate portal field schema from screenshot
+app.post('/api/oem/:oemId/generate-portal-schema', screenshotUpload.single('screenshot'), async (req, res) => {
+  try {
+    const { oemId } = req.params;
+    const notes = req.body?.notes || '';
+
+    if (!req.file) return res.status(400).json({ error: 'No screenshot file received' });
+
+    const oemRow = db.prepare('SELECT * FROM oem_configs WHERE id=?').get(oemId);
+    if (!oemRow) return res.status(404).json({ error: 'OEM not found' });
+
+    // Look up Portal Definition Generator prompt
+    const portalDefPrompt = db.prepare(
+      "SELECT * FROM custom_prompts WHERE category='Portal Definition' AND is_default=1 LIMIT 1"
+    ).get();
+    if (!portalDefPrompt) return res.status(500).json({ error: 'Portal Definition Generator prompt not found in DB' });
+
+    const buf = req.file.buffer;
+    const b64 = buf.toString('base64');
+    const mimeType = req.file.mimetype === 'image/png' ? 'image/png' : 'image/jpeg';
+
+    const definePortalFieldsSchema = {
+      type: 'object',
+      properties: {
+        fields: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              fieldId:  { type: 'string' },
+              name:     { type: 'string' },
+              section:  { type: 'string' },
+              required: { type: 'boolean' },
+              type:     { type: 'string', enum: ['text', 'date', 'number', 'textarea'] },
+            },
+            required: ['fieldId', 'name', 'section', 'required', 'type'],
+          },
+        },
+      },
+      required: ['fields'],
+    };
+
+    const userContent = [
+      { type: 'image', source: { type: 'base64', media_type: mimeType, data: b64 } },
+      { type: 'text', text: portalDefPrompt.prompt_text + (notes ? `\n\nAdditional instructions: ${notes}` : '') },
+    ];
+
+    const toolResp = await anthropic.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 4096,
+      tools: [{
+        name: 'define_portal_fields',
+        description: 'Return the structured list of portal fields identified from the screenshot',
+        input_schema: definePortalFieldsSchema,
+      }],
+      tool_choice: { type: 'tool', name: 'define_portal_fields' },
+      messages: [{ role: 'user', content: userContent }],
+    });
+
+    const toolUse = toolResp.content.find(b => b.type === 'tool_use');
+    if (!toolUse) return res.status(500).json({ error: 'Model did not return a tool_use block' });
+
+    const fields = toolUse.input.fields || [];
+
+    // Save to oem_configs.portal_fields
+    db.prepare('UPDATE oem_configs SET portal_fields=? WHERE id=?')
+      .run(JSON.stringify(fields), oemId);
+
+    console.log('[GeneratePortalSchema] OEM', oemId, '— saved', fields.length, 'fields');
+    res.json({ fields, oemId });
+  } catch (err) {
+    console.error('[GeneratePortalSchema]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ────────────────────────────────────────────────────────────────────────────
 // JOB CARD — upload + enrich (now machine-aware)
 // ────────────────────────────────────────────────────────────────────────────
@@ -769,11 +851,7 @@ app.post('/api/claim/process', async (req, res) => {
     }
     if (!resolvedPrompt) return res.status(400).json({ error: 'No prompt found — add a default prompt in Custom Prompts' });
 
-    // Terex detection (needed before building contentBlocks so we can append enforcement)
-    const TEREX_BRANDS    = ['terex', 'powerscreen', 'terex fuchs', 'doppstadt', 'finlay', 'ecotec', 'evoquip'];
-    const TEREX_FIELD_IDS = ['claim_id','type','dealer','brand','model','currency','customer_name','customer_no','tax_no','site_address','product','serial_no','settings','application','engine_sn','hours_run','helpdesk_ref','dealer_ref','registration_date','failure_date','repair_date','submitted_date','date_closed','description','suspect_cause','action_taken'];
-    const oemLabel = ((oem?.name || '') + ' ' + (oem?.brand || '')).toLowerCase();
-    const isTerex  = TEREX_BRANDS.some(b => oemLabel.includes(b));
+    // (isTerex and TEREX_BRANDS/TEREX_FIELD_IDS removed — portal schema is now OEM-driven)
 
     // Build message content blocks — from files or pasted text
     const contentBlocks = [];
@@ -799,8 +877,6 @@ app.post('/api/claim/process', async (req, res) => {
       }
     }
 
-    contentBlocks.push({ type: 'text', text: resolvedPrompt });
-
     // Upload pasted text as .docx to R2 (best-effort — won't fail the request)
     let pastedDocxR2Key = null;
     if (hasPasted) {
@@ -814,17 +890,7 @@ app.post('/api/claim/process', async (req, res) => {
       }
     }
 
-    console.log('[Process] STAGE C — Anthropic call starting, isTerex:', isTerex, 'OEM:', oem?.name || 'none');
-
-    const resp = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 4096,
-      messages: [{ role: 'user', content: contentBlocks }],
-    });
-
-    const aiRawResponse = resp.content[0].text;
-    console.log('[Process] STAGE D — AI response received, length:', aiRawResponse?.length);
-    console.log('[Process] STAGE E — AI raw response (first 3000 chars):', aiRawResponse?.slice(0, 3000));
+    console.log('[Process] STAGE C — Anthropic call starting, OEM:', oem?.name || 'none');
 
     // Robust JSON extractor — never throws, always returns an object
     function robustExtractJson(text) {
@@ -858,31 +924,87 @@ app.post('/api/claim/process', async (req, res) => {
       }
     }
 
-    // Map universal extraction record to Terex portal fields
-    function mapToTerexPortal(record) {
-      return {
-        claim_id:      record.job_number          || '',
-        type:          'Machine Warranty',
-        model:         record.model               || '',
-        serial_no:     record.machine_serial      || '',
-        engine_sn:     '',
-        hours_run:     record.machine_hours != null ? String(record.machine_hours) : '',
-        failure_date:  record.date_of_failure     || '',
-        repair_date:   record.date_of_repair      || '',
-        description:   record.reason              || '',
-        suspect_cause: record.cause               || '',
-        action_taken:  record.resolution          || '',
-        product:       record.model               || '',
-        site_address:  record.postcode            || '',
-        // Extra fields carried through for reference
-        _engineer_narrative: record.engineer_narrative || '',
-        _part_numbers:       record.part_numbers       || [],
+    // Build JSON schema from OEM's portal_fields
+    const portalFields = oem?.portal_fields || [];
+    const hasSchema = portalFields.length > 0;
+
+    let portalOutput = {};
+    let aiRawResponse = '';
+
+    if (hasSchema) {
+      // Build tool input schema from portal_fields
+      const inputSchema = {
+        type: 'object',
+        properties: portalFields.reduce((acc, f) => {
+          acc[f.fieldId] = { type: 'string', description: f.name };
+          return acc;
+        }, {}),
+        required: portalFields.map(f => f.fieldId),
       };
+
+      const toolResp = await anthropic.messages.create({
+        model: 'claude-opus-4-6',
+        max_tokens: 4096,
+        tools: [{
+          name: 'submit_warranty_claim',
+          description: 'Submit the extracted warranty claim data matching the OEM portal structure',
+          input_schema: inputSchema,
+        }],
+        tool_choice: { type: 'tool', name: 'submit_warranty_claim' },
+        messages: [{
+          role: 'user',
+          content: [
+            ...contentBlocks,
+            {
+              type: 'text',
+              text: resolvedPrompt + '\n\nUse the submit_warranty_claim tool to return the extracted fields.',
+            },
+          ],
+        }],
+      });
+
+      const toolUse = toolResp.content.find(b => b.type === 'tool_use');
+      if (toolUse) {
+        portalOutput = toolUse.input;
+        aiRawResponse = JSON.stringify(portalOutput);
+      } else {
+        // Fallback: Haiku extraction using OEM field IDs
+        console.warn('[Process] No tool_use in response, running Haiku fallback');
+        const rawText = toolResp.content.find(b => b.type === 'text')?.text || '';
+        aiRawResponse = rawText;
+        try {
+          const hr = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 2048,
+            messages: [{
+              role: 'user',
+              content: `Extract warranty portal field values from this text.\n\nText:\n${rawText.slice(0, 6000)}\n\nRequired field IDs: ${portalFields.map(f => f.fieldId).join(', ')}\n\nReturn ONLY valid JSON with these exact field IDs as keys. Empty string for any field not found.`
+            }],
+          });
+          portalOutput = robustExtractJson(hr.content[0].text);
+        } catch (he) {
+          console.error('[Process] Haiku fallback failed:', he.message);
+          portalOutput = { analysis_notes: rawText };
+        }
+      }
+    } else {
+      // No portal schema defined — use free-form extraction
+      const resp = await anthropic.messages.create({
+        model: 'claude-opus-4-6',
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: [...contentBlocks, { type: 'text', text: resolvedPrompt }] }],
+      });
+      const aiRawText = resp.content[0]?.text || '';
+      aiRawResponse = aiRawText;
+      const arr = robustExtractArray(aiRawText);
+      if (arr && arr.length > 0) {
+        portalOutput = arr[0];
+      } else {
+        portalOutput = robustExtractJson(aiRawText) || { analysis_notes: aiRawText };
+      }
     }
 
-    // Try array parse first (new universal prompt), fall back to object parse
-    const parsedArray = robustExtractArray(aiRawResponse);
-    console.log('[Process] STAGE F — parsedArray:', parsedArray ? `${parsedArray.length} records` : 'null (will try object parse)');
+    console.log('[Process] STAGE D — AI response received, portal_output keys:', Object.keys(portalOutput));
 
     const insertClaim = db.prepare(`
       INSERT INTO claims (oem_config_id, oem_name, uploaded_documents, prompt, ai_model, ai_raw_response, portal_output, custom_prompt_id, repair_date, status)
@@ -898,103 +1020,18 @@ app.post('/api/claim/process', async (req, res) => {
         }])
       : JSON.stringify(files.map(f => ({ filename: f.filename, size: f.size || 0, type: f.type, r2_key: f.r2_key })));
 
-    if (parsedArray && parsedArray.length > 0) {
-      // ── New universal prompt — array response ─────────────────────────────
-      if (parsedArray.length === 1) {
-        // Single card → single claim
-        const record = parsedArray[0];
-        const portalOutput = isTerex ? mapToTerexPortal(record) : record;
-        console.log('[Process] STAGE G — single record, portal_output keys:', Object.keys(portalOutput));
+    console.log('[Process] STAGE G — portal_output before save:', JSON.stringify(portalOutput).slice(0, 1000));
 
-        const ins = insertClaim.run(
-          oemConfigId || null, oem?.name || null,
-          docJson, resolvedPrompt, 'claude-opus-4-6', aiRawResponse, JSON.stringify(portalOutput),
-          resolvedPromptId, repairDate || null,
-        );
-        const claimId = ins.lastInsertRowid;
-        console.log('[Process] STAGE H — saved claim id:', claimId);
-        const responsePayload = { claimId, portalOutput, aiRawResponse, promptId: resolvedPromptId, promptName: resolvedPromptName };
-        console.log('[Process] STAGE I — response sent to frontend:', JSON.stringify(responsePayload).slice(0, 500));
-        res.json(responsePayload);
-      } else {
-        // Multiple cards → one claim each, return array of IDs
-        const claimIds = [];
-        let firstPortalOutput = {};
-        for (const record of parsedArray) {
-          const portalOutput = isTerex ? mapToTerexPortal(record) : record;
-          const ins = insertClaim.run(
-            oemConfigId || null, oem?.name || null,
-            docJson, resolvedPrompt, 'claude-opus-4-6', aiRawResponse, JSON.stringify(portalOutput),
-            resolvedPromptId, repairDate || null,
-          );
-          claimIds.push(ins.lastInsertRowid);
-          if (claimIds.length === 1) firstPortalOutput = portalOutput;
-        }
-        console.log('[Process] STAGE H — saved claim ids:', claimIds);
-        // Return first card's portal output for immediate display
-        const responsePayload = { claimIds, claimId: claimIds[0], portalOutput: firstPortalOutput, aiRawResponse, promptId: resolvedPromptId, promptName: resolvedPromptName };
-        console.log('[Process] STAGE I — response sent to frontend:', JSON.stringify(responsePayload).slice(0, 500));
-        res.json(responsePayload);
-      }
-    } else {
-      // ── Legacy object parse (old prompts / fallback) ──────────────────────
-      const parsed = robustExtractJson(aiRawResponse);
-      console.log('[Process] STAGE F2 — parsed structure keys:', Object.keys(parsed));
-
-      let portalOutput = {};
-      if (parsed.portal_output && typeof parsed.portal_output === 'object') {
-        portalOutput = { ...parsed.portal_output };
-        if (parsed.analysis_notes) portalOutput.analysis_notes = parsed.analysis_notes;
-      } else if (Object.keys(parsed).length > 0) {
-        portalOutput = parsed;
-      } else {
-        // No JSON found — run Haiku fallback
-        if (isTerex) {
-          try {
-            const hr = await anthropic.messages.create({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 2048,
-              messages: [{ role: 'user', content:
-                `Extract Terex warranty portal field values from the text below.\n\nText:\n${aiRawResponse.slice(0, 6000)}\n\nRequired field IDs: ${TEREX_FIELD_IDS.join(', ')}\n\nReturn ONLY valid JSON with these exact field IDs as keys. Empty string for any field not found.`
-              }],
-            });
-            portalOutput = robustExtractJson(hr.content[0].text);
-            console.log('[Process] Haiku Terex fallback result keys:', Object.keys(portalOutput));
-          } catch (he) {
-            console.error('[Process] Haiku fallback failed:', he.message);
-            portalOutput = { analysis_notes: aiRawResponse };
-          }
-        } else if (oem?.portal_fields?.length > 0) {
-          try {
-            const hr = await anthropic.messages.create({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 1024,
-              messages: [{ role: 'user', content:
-                `Extract portal field values from the analysis below.\n\nAnalysis:\n${aiRawResponse.slice(0,6000)}\n\nFields: ${JSON.stringify(oem.portal_fields.map(f=>({fieldId:f.fieldId,name:f.name})))}\n\nReturn ONLY valid JSON: {"fieldId":"value",...}`
-              }],
-            });
-            portalOutput = robustExtractJson(hr.content[0].text);
-          } catch {
-            portalOutput = { analysis_notes: aiRawResponse };
-          }
-        } else {
-          portalOutput = { analysis_notes: aiRawResponse };
-        }
-      }
-
-      console.log('[Process] STAGE G — portal_output before save:', JSON.stringify(portalOutput).slice(0, 1000));
-
-      const ins = insertClaim.run(
-        oemConfigId || null, oem?.name || null,
-        docJson, resolvedPrompt, 'claude-opus-4-6', aiRawResponse, JSON.stringify(portalOutput),
-        resolvedPromptId, repairDate || null,
-      );
-      const claimId = ins.lastInsertRowid;
-      console.log('[Process] STAGE H — saved claim id:', claimId);
-      const responsePayload = { claimId, portalOutput, aiRawResponse, promptId: resolvedPromptId, promptName: resolvedPromptName };
-      console.log('[Process] STAGE I — response sent to frontend:', JSON.stringify(responsePayload).slice(0, 500));
-      res.json(responsePayload);
-    }
+    const ins = insertClaim.run(
+      oemConfigId || null, oem?.name || null,
+      docJson, resolvedPrompt, 'claude-opus-4-6', aiRawResponse, JSON.stringify(portalOutput),
+      resolvedPromptId, repairDate || null,
+    );
+    const claimId = ins.lastInsertRowid;
+    console.log('[Process] STAGE H — saved claim id:', claimId);
+    const responsePayload = { claimId, claimIds: [claimId], portalOutput, aiRawResponse, promptId: resolvedPromptId, promptName: resolvedPromptName };
+    console.log('[Process] STAGE I — response sent to frontend:', JSON.stringify(responsePayload).slice(0, 500));
+    res.json(responsePayload);
   } catch(err) {
     console.error('[Claim Process]', err);
     res.status(500).json({ error: err.message });

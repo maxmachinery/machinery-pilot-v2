@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import TerexPortalView from '../components/portals/TerexPortalView.jsx'
+import GenericPortalView from '../components/portals/GenericPortalView.jsx'
 
 const STEPS = [
   { n: 1, label: 'Job Card'    },
@@ -8,10 +9,10 @@ const STEPS = [
 
 const TEREX_BRANDS = ['terex', 'powerscreen', 'terex fuchs', 'doppstadt', 'finlay', 'ecotec', 'evoquip']
 
-function isTerexOem(oem) {
-  const name  = (oem?.name  || '').toLowerCase()
-  const brand = (oem?.brand || '').toLowerCase()
-  return TEREX_BRANDS.some(b => name.includes(b) || brand.includes(b))
+function getPortalComponent(oem) {
+  const label = ((oem?.name || '') + ' ' + (oem?.brand || '')).toLowerCase()
+  if (TEREX_BRANDS.some(b => label.includes(b))) return TerexPortalView
+  return GenericPortalView
 }
 
 export default function NewClaim() {
@@ -386,7 +387,10 @@ export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem
   }
 
   // Route to brand-specific portal mirror
-  if (isTerexOem(oem)) {
+  const PortalComponent = getPortalComponent(oem)
+  const portalFields = oem?.portal_fields || []
+
+  if (PortalComponent === TerexPortalView) {
     return (
       <>
         <PromptCaption usedPromptName={usedPromptName} claimIds={claimIds} onOpenSwitcher={openSwitcher} />
@@ -406,27 +410,18 @@ export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem
   }
 
   // Generic portal view
-  const portalFields = oem?.portal_fields || []
-  const [copied, setCopied] = useState(null)
+  const [localOutput, setLocalOutput] = useState(portalOutput)
 
-  function copyField(id, value) {
-    navigator.clipboard.writeText(value || '').catch(() => {})
-    setCopied(id)
-    setTimeout(() => setCopied(null), 1500)
+  function handleFieldChange(fieldId, value) {
+    setLocalOutput(prev => ({ ...prev, [fieldId]: value }))
   }
 
   function copyAll() {
     const lines = portalFields.length > 0
-      ? portalFields.map(f => `${f.name || f.fieldId}:\n${portalOutput[f.fieldId] || ''}`)
-      : Object.entries(portalOutput).filter(([k]) => k !== 'analysis_notes').map(([k, v]) => `${k}:\n${v}`)
+      ? portalFields.map(f => `${f.name || f.fieldId}:\n${localOutput[f.fieldId] || ''}`)
+      : Object.entries(localOutput).filter(([k]) => k !== 'analysis_notes').map(([k, v]) => `${k}:\n${v}`)
     navigator.clipboard.writeText(lines.join('\n\n')).catch(() => {})
   }
-
-  const entries = portalFields.length > 0
-    ? portalFields.map(f => ({ id: f.fieldId, label: f.name || f.fieldId, value: portalOutput[f.fieldId] || '', maxChars: f.maxChars, required: f.required }))
-    : Object.entries(portalOutput)
-        .filter(([k]) => k !== 'analysis_notes')
-        .map(([k, v]) => ({ id: k, label: k, value: String(v), maxChars: null, required: false }))
 
   return (
     <>
@@ -447,7 +442,7 @@ export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem
           <div>
             <h2 className="card-title">Portal View</h2>
             <p className="card-subtitle">
-              Results formatted to match {oem?.name || 'OEM'} portal structure. Click any field to copy.
+              Results formatted to match {oem?.name || 'OEM'} portal structure.
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -457,48 +452,25 @@ export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem
         </div>
       </div>
 
-      {entries.length === 0 && !portalOutput.analysis_notes ? (
+      {Object.keys(localOutput).length === 0 && !localOutput.analysis_notes ? (
         <div className="card">
           <div style={{ fontSize: 13, color: 'var(--grey-muted)', whiteSpace: 'pre-wrap', fontFamily: 'monospace', background: 'var(--grey-bg)', padding: '12px 14px', borderRadius: 6 }}>
             {aiRawResponse}
           </div>
         </div>
       ) : (
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 14 }}>
-          {entries.map((f, idx) => {
-            const over   = f.maxChars && (f.value?.length || 0) > f.maxChars
-            const isLast = idx === entries.length - 1
-            return (
-              <div key={f.id} style={{ borderBottom: isLast ? 'none' : '1px solid var(--grey-border)', paddingBottom: isLast ? 0 : 16 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--navy)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                    {f.label}{f.required && <span style={{ color: 'var(--crit)', marginLeft: 2 }}>*</span>}
-                  </label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {f.maxChars && <span style={{ fontSize: 11, color: over ? 'var(--crit)' : 'var(--grey-muted)' }}>{f.value?.length || 0}/{f.maxChars}</span>}
-                    <button className="btn btn-ghost btn-xs" onClick={() => copyField(f.id, f.value)} style={{ color: copied === f.id ? 'var(--ok)' : undefined }}>
-                      {copied === f.id ? '✓ Copied' : 'Copy'}
-                    </button>
-                  </div>
-                </div>
-                <div
-                  style={{ padding: '10px 12px', borderRadius: 6, border: `1.5px solid ${over ? 'var(--crit-ring)' : 'var(--grey-border)'}`, fontSize: 13, lineHeight: 1.5, cursor: 'pointer', color: f.value ? 'var(--text)' : 'var(--grey-muted)', fontStyle: f.value ? 'normal' : 'italic', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-                  onClick={() => copyField(f.id, f.value)}
-                  title="Click to copy"
-                >
-                  {f.value || '(no value generated)'}
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <GenericPortalView
+          portalOutput={localOutput}
+          portalFields={portalFields}
+          onChange={handleFieldChange}
+        />
       )}
 
-      {portalOutput.analysis_notes && (
-        <div className="card">
+      {localOutput.analysis_notes && (
+        <div className="card" style={{ marginTop: 14 }}>
           <h3 className="sec-title">Analysis Notes</h3>
           <div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-            {portalOutput.analysis_notes}
+            {localOutput.analysis_notes}
           </div>
         </div>
       )}

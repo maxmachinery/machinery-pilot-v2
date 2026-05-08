@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 function fileIcon(filename) {
   if (!filename) return '📎'
@@ -19,10 +19,11 @@ const DOC_SLOTS = [
 ]
 
 export default function OEMLibrary({ focusOemId, onStartClaim }) {
-  const [rows,       setRows]       = useState([])
-  const [loading,    setLoading]    = useState(true)
-  const [showAdd,    setShowAdd]    = useState(false)
-  const [expandedId, setExpandedId] = useState(null) // rowKey with detail open
+  const [rows,              setRows]              = useState([])
+  const [loading,           setLoading]           = useState(true)
+  const [showAdd,           setShowAdd]           = useState(false)
+  const [expandedId,        setExpandedId]        = useState(null) // rowKey with detail open
+  const [schemaModalOemId,  setSchemaModalOemId]  = useState(null)
 
   useEffect(() => { loadLibrary() }, [])
 
@@ -154,6 +155,7 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
                     onDocDeleted={handleDocDeleted}
                     onClose={() => setExpandedId(null)}
                     onStartClaim={row.isOemWide ? null : () => onStartClaim(row)}
+                    onGenerateSchema={() => setSchemaModalOemId(row.oemId)}
                   />
                 )}
               </div>
@@ -179,12 +181,23 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
           onUploaded={() => { loadLibrary(); setShowAdd(false) }}
         />
       )}
+
+      {/* Generate Portal Schema modal */}
+      {schemaModalOemId && (
+        <GenerateSchemaModal
+          oemId={schemaModalOemId}
+          onClose={() => { setSchemaModalOemId(null); loadLibrary() }}
+        />
+      )}
     </>
   )
 }
 
 // ── Expanded detail row ──────────────────────────────────────────────────────
-function MachineDetailRow({ row, onDocUploaded, onDocDeleted, onClose, onStartClaim }) {
+function MachineDetailRow({ row, onDocUploaded, onDocDeleted, onClose, onStartClaim, onGenerateSchema }) {
+  const portalFields = row.portal_fields || []
+  const hasSchema = portalFields.length > 0
+
   return (
     <div style={{
       background:'var(--grey-bg)',
@@ -197,7 +210,7 @@ function MachineDetailRow({ row, onDocUploaded, onDocDeleted, onClose, onStartCl
             {row.isOemWide ? `${row.oemName} — OEM-wide` : `${row.oemName} — ${row.machineModel}`}
           </span>
           <span style={{ fontSize:12, color:'var(--grey-muted)', marginLeft:10 }}>
-            {(row.job_card_fields || []).length} job card fields · {(row.portal_fields || []).length} portal fields
+            {(row.job_card_fields || []).length} job card fields · {portalFields.length} portal fields
           </span>
         </div>
         <div style={{ display:'flex', gap:8 }}>
@@ -221,6 +234,61 @@ function MachineDetailRow({ row, onDocUploaded, onDocDeleted, onClose, onStartCl
             />
           )
         })}
+      </div>
+
+      {/* Portal Schema section */}
+      <div style={{ marginTop:16, background:'var(--white)', borderRadius:8, border:'1.5px solid var(--grey-border)', padding:'14px 16px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+          <div>
+            <span style={{ fontSize:12, fontWeight:700, color:'var(--navy)', textTransform:'uppercase', letterSpacing:'.06em' }}>
+              Portal Schema
+            </span>
+            <span style={{ marginLeft:10 }}>
+              {hasSchema ? (
+                <span style={{ fontSize:11, fontWeight:700, color:'var(--ok)', background:'var(--ok-bg)', border:'1px solid var(--ok-ring)', padding:'2px 8px', borderRadius:12 }}>
+                  Schema defined ({portalFields.length} fields)
+                </span>
+              ) : (
+                <span style={{ fontSize:11, fontWeight:700, color:'var(--grey-muted)', background:'var(--grey-bg)', border:'1px solid var(--grey-border)', padding:'2px 8px', borderRadius:12 }}>
+                  No schema
+                </span>
+              )}
+            </span>
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={onGenerateSchema}>
+            Generate Schema from Screenshot
+          </button>
+        </div>
+        {hasSchema && (
+          <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+            <thead>
+              <tr>
+                {['Field ID', 'Name', 'Section'].map(h => (
+                  <th key={h} style={{ textAlign:'left', padding:'4px 8px', fontSize:11, fontWeight:700, color:'var(--grey-muted)', textTransform:'uppercase', letterSpacing:'.05em', borderBottom:'1px solid var(--grey-border)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {portalFields.slice(0, 5).map(f => (
+                <tr key={f.fieldId}>
+                  <td style={{ padding:'4px 8px', color:'var(--navy)', fontFamily:'monospace', fontSize:11 }}>{f.fieldId}</td>
+                  <td style={{ padding:'4px 8px', color:'var(--text)' }}>{f.name}</td>
+                  <td style={{ padding:'4px 8px', color:'var(--grey-muted)' }}>{f.section}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {portalFields.length > 5 && (
+          <div style={{ fontSize:11, color:'var(--grey-muted)', fontStyle:'italic', marginTop:6, paddingLeft:8 }}>
+            …and {portalFields.length - 5} more field{portalFields.length - 5 !== 1 ? 's' : ''}
+          </div>
+        )}
+        {!hasSchema && (
+          <div style={{ fontSize:12, color:'var(--grey-muted)', marginTop:4 }}>
+            Upload a screenshot of the OEM portal claim form to auto-generate the field schema.
+          </div>
+        )}
       </div>
 
       {(row.policy_rules || []).length > 0 && (
@@ -473,6 +541,139 @@ function AddDocModal({ existingRows, onClose, onUploaded }) {
                 Upload &amp; Extract →
               </button>
               <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Generate Portal Schema modal ─────────────────────────────────────────────
+function GenerateSchemaModal({ oemId, onClose }) {
+  const [file,       setFile]       = useState(null)
+  const [notes,      setNotes]      = useState('')
+  const [loading,    setLoading]    = useState(false)
+  const [error,      setError]      = useState(null)
+  const [fields,     setFields]     = useState(null) // generated fields preview
+  const fileRef = useRef()
+
+  async function generate() {
+    if (!file) return setError('Please select a screenshot file')
+    setLoading(true)
+    setError(null)
+    setFields(null)
+    try {
+      const fd = new FormData()
+      fd.append('screenshot', file)
+      if (notes.trim()) fd.append('notes', notes.trim())
+      const r = await fetch(`/api/oem/${oemId}/generate-portal-schema`, { method: 'POST', body: fd })
+      if (!r.ok) {
+        const e = await r.json()
+        throw new Error(e.error || 'Generation failed')
+      }
+      const data = await r.json()
+      setFields(data.fields || [])
+    } catch(e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleClose() {
+    onClose()
+  }
+
+  return (
+    <div style={{
+      position:'fixed', inset:0, background:'rgba(13,31,60,.55)',
+      display:'flex', alignItems:'center', justifyContent:'center', zIndex:300,
+    }}>
+      <div style={{ background:'var(--white)', borderRadius:12, padding:28, width:600, maxWidth:'94vw', maxHeight:'90vh', overflowY:'auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+          <h3 style={{ fontSize:18, color:'var(--navy)', margin:0, fontFamily:'Barlow, sans-serif' }}>Generate Portal Schema</h3>
+          <button className="btn btn-ghost btn-sm" onClick={handleClose}>✕</button>
+        </div>
+        <p style={{ fontSize:13, color:'var(--grey-muted)', marginBottom:18, lineHeight:1.5 }}>
+          Upload a screenshot of the OEM portal claim form. The AI will identify all input fields.
+        </p>
+
+        {error && <div className="err" style={{ marginBottom:14 }}>{error}</div>}
+
+        {loading ? (
+          <div className="loader" style={{ padding:'40px 0' }}>
+            <div className="spinner" />
+            <div className="loader-title">Analysing portal screenshot…</div>
+            <div className="loader-sub">This may take 15–30 seconds</div>
+          </div>
+        ) : fields !== null ? (
+          <>
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:'var(--ok)', marginBottom:8 }}>
+                {fields.length} field{fields.length !== 1 ? 's' : ''} identified and saved
+              </div>
+              <table style={{ width:'100%', fontSize:12, borderCollapse:'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Field ID', 'Name', 'Section', 'Required', 'Type'].map(h => (
+                      <th key={h} style={{ textAlign:'left', padding:'5px 8px', fontSize:11, fontWeight:700, color:'var(--grey-muted)', textTransform:'uppercase', letterSpacing:'.05em', borderBottom:'2px solid var(--grey-border)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {fields.map(f => (
+                    <tr key={f.fieldId}>
+                      <td style={{ padding:'5px 8px', fontFamily:'monospace', fontSize:11, color:'var(--navy)' }}>{f.fieldId}</td>
+                      <td style={{ padding:'5px 8px', color:'var(--text)' }}>{f.name}</td>
+                      <td style={{ padding:'5px 8px', color:'var(--grey-muted)' }}>{f.section}</td>
+                      <td style={{ padding:'5px 8px', color: f.required ? 'var(--crit)' : 'var(--grey-muted)' }}>{f.required ? 'Yes' : 'No'}</td>
+                      <td style={{ padding:'5px 8px', color:'var(--grey-muted)' }}>{f.type}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button className="btn btn-primary" onClick={handleClose}>Save & Close</button>
+              <button className="btn btn-ghost" onClick={() => { setFields(null); setFile(null) }}>Re-run</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="field-group" style={{ marginBottom:14 }}>
+              <label className="field-label">Screenshot <span style={{ color:'var(--crit)' }}>*</span></label>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  style={{ display:'none' }}
+                  onChange={e => { setFile(e.target.files[0]); setError(null) }}
+                />
+                <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current.click()}>
+                  {file ? '📷 Change screenshot' : '📷 Select screenshot'}
+                </button>
+                {file && <span style={{ fontSize:12, color:'var(--grey-muted)' }}>{file.name}</span>}
+              </div>
+            </div>
+            <div className="field-group" style={{ marginBottom:18 }}>
+              <label className="field-label">Additional instructions <span style={{ color:'var(--grey-muted)', fontWeight:400 }}>(optional)</span></label>
+              <textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="e.g. 'Include only the Details tab'"
+                style={{
+                  width:'100%', minHeight:60, padding:'10px 12px',
+                  border:'1.5px solid var(--grey-border)', borderRadius:6,
+                  fontSize:13, lineHeight:1.5, resize:'vertical',
+                  outline:'none', boxSizing:'border-box', color:'var(--text)',
+                }}
+              />
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button className="btn btn-primary" onClick={generate} disabled={!file}>Generate</button>
+              <button className="btn btn-ghost" onClick={handleClose}>Cancel</button>
             </div>
           </>
         )}

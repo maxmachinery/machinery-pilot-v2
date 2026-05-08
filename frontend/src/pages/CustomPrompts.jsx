@@ -30,7 +30,10 @@ export default function CustomPrompts() {
   const [error,    setError]    = useState(null)
 
   useEffect(() => {
-    fetch('/api/prompts').then(r => r.json()).then(setPrompts).catch(() => setPrompts([]))
+    fetch('/api/prompts')
+      .then(r => r.json())
+      .then(all => setPrompts((all || []).filter(p => p.category !== 'Portal Definition')))
+      .catch(() => setPrompts([]))
     fetch('/api/oem/configs').then(r => r.json()).then(setOems).catch(() => setOems([]))
   }, [])
 
