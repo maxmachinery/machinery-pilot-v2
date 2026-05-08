@@ -1,19 +1,17 @@
 import { useState } from 'react'
 import AppScaler     from './components/AppScaler.jsx'
 import Sidebar       from './components/Sidebar.jsx'
-import OEMLibrary    from './pages/OEMLibrary.jsx'
+import PortalSetup   from './pages/PortalSetup.jsx'
 import NewClaim      from './pages/NewClaim.jsx'
 import ClaimHistory  from './pages/ClaimHistory.jsx'
 import Settings      from './pages/Settings.jsx'
 import CustomPrompts      from './pages/CustomPrompts.jsx'
 import BrandDetail        from './pages/BrandDetail.jsx'
-import WarrantyAssistant  from './pages/WarrantyAssistant.jsx'
 
 const TITLES = {
   claim:     'New Claim',
   history:   'Claim History',
-  assistant: 'Warranty Assistant',
-  library:   'OEM Library',
+  library:   'Portal Setup',
   prompts:   'Custom Prompts',
   settings:  'Settings',
   brand:     'Brand',
@@ -54,10 +52,9 @@ export default function App() {
           </div>
 
           <div className="page-body">
-            {page === 'claim'     && <NewClaim key={claimKey} />}
+            {page === 'claim'     && <NewClaim key={claimKey} onNavigate={handleNavigate} />}
             {page === 'history'   && <ClaimHistory key={historyKey} />}
-            {page === 'assistant' && <WarrantyAssistant />}
-            {page === 'library'   && <OEMLibrary onStartClaim={() => setPage('claim')} />}
+            {page === 'library'   && <PortalSetup onStartClaim={() => setPage('claim')} />}
             {page === 'prompts'   && <CustomPrompts />}
             {page === 'settings'  && <Settings />}
             {page === 'brand'     && <BrandDetail brand={selectedBrand} onNavigate={setPage} />}

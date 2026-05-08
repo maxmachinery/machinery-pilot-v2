@@ -23,7 +23,7 @@ export default function GenericPortalView({ portalOutput = {}, portalFields = []
       <div className="card" style={{ padding: '24px 20px', textAlign: 'center' }}>
         <div style={{ fontSize: 13, color: 'var(--grey-muted)', lineHeight: 1.6 }}>
           No portal schema defined for this OEM.
-          Go to OEM Library to generate a portal schema from a screenshot.
+          Go to Portal Setup to generate a portal schema from a screenshot.
         </div>
       </div>
     )

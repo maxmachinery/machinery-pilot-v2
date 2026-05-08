@@ -63,7 +63,7 @@ export default function OEMEngine({ onConfirm }) {
     <>
       <div className="card">
         <div className="card-head">
-          <h2 className="card-title">Step 1 — OEM Policy Engine</h2>
+          <h2 className="card-title">OEM Policy Engine</h2>
           <p className="card-subtitle">Select a saved OEM config or upload a new warranty policy PDF</p>
         </div>
 

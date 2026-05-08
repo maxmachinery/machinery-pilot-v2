@@ -11,12 +11,14 @@ export default function Sidebar({ currentPage, onNavigate, onSelectBrand }) {
   }, [currentPage])
 
   const NAV = [
-    { id:'claim',     icon:'✦',  label:'New Claim'      },
-    { id:'history',   icon:'🗂', label:'Claim History'       },
-    { id:'assistant', icon:'💬', label:'Warranty Assistant'  },
-    { id:'library',   icon:'🏛', label:'OEM Library'         },
-    { id:'prompts',   icon:'📝', label:'Custom Prompts'      },
-    { id:'settings',  icon:'⚙', label:'Settings'            },
+    { id:'claim',    icon:'✦',  label:'New Claim'      },
+    { id:'history',  icon:'🗂', label:'Claim History'  },
+    { id:'library',  icon:'🖥', label:'Portal Setup'   },
+    { id:'prompts',  icon:'📝', label:'Custom Prompts' },
+  ]
+
+  const NAV_BOTTOM = [
+    { id:'settings', icon:'⚙', label:'Settings' },
   ]
 
   const DOC_TYPES = ['warranty_policy','portal_structure','technical_manual','warranty_schedule','historic_claims']
@@ -48,6 +50,18 @@ export default function Sidebar({ currentPage, onNavigate, onSelectBrand }) {
             key={item.id}
             className={`nav-item ${item.extra||''} ${currentPage===item.id?'active':''}`}
             onClick={() => onNavigate(item.id)}
+          >
+            <span className="nav-icon">{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+        <div style={{ height: 1, background: '#2A3550', margin: '8px 0' }} />
+        {NAV_BOTTOM.map(item => (
+          <button
+            key={item.id}
+            className={`nav-item ${currentPage===item.id?'active':''}`}
+            onClick={() => onNavigate(item.id)}
+            style={{ fontSize: 13 }}
           >
             <span className="nav-icon">{item.icon}</span>
             {item.label}

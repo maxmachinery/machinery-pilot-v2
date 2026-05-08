@@ -70,7 +70,7 @@ export default function JobCardUpload({ oemConfig, onDone, onBack }) {
       </div>
 
       <div className="card-head">
-        <h2 className="card-title">Step 2 — Job Card Upload</h2>
+        <h2 className="card-title">Job Card Upload</h2>
         <p className="card-subtitle">
           Upload the engineer's job card PDF for <strong>{oemConfig.name}</strong>.
           Fields will be extracted and gap-analysed against the warranty policy.

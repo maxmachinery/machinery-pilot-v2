@@ -18,7 +18,7 @@ const DOC_SLOTS = [
   { type: 'historic_claims',   label: 'Historic Claims',   short: 'Historic' },
 ]
 
-export default function OEMLibrary({ focusOemId, onStartClaim }) {
+export default function PortalSetup({ focusOemId, onStartClaim }) {
   const [rows,              setRows]              = useState([])
   const [loading,           setLoading]           = useState(true)
   const [showAdd,           setShowAdd]           = useState(false)
@@ -54,14 +54,16 @@ export default function OEMLibrary({ focusOemId, onStartClaim }) {
             Each row is a unique OEM + Machine combination
           </span>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Documents</button>
+        <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Portal</button>
       </div>
 
       {rows.length === 0 ? (
         <div className="empty" style={{ background:'var(--white)', borderRadius:10, border:'1px solid var(--grey-border)' }}>
-          No documents yet.<br />
-          <button className="btn btn-primary" style={{ marginTop:14 }} onClick={() => setShowAdd(true)}>
-            Upload first document
+          <div style={{ fontSize: 36, marginBottom: 10 }}>🖥️</div>
+          <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--navy)', marginBottom: 6 }}>No portals configured yet</div>
+          <div style={{ fontSize: 13, color: 'var(--grey-muted)', marginBottom: 14 }}>Upload a screenshot of your OEM warranty portal to begin.</div>
+          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+            + Add Your First Portal
           </button>
         </div>
       ) : (
