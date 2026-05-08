@@ -369,6 +369,8 @@ export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem
   const [showSwitcher,   setShowSwitcher]   = useState(false)
   const [availPrompts,   setAvailPrompts]   = useState(null)
   const [selectedPid,    setSelectedPid]    = useState(null)
+  // localOutput is used only in the generic portal path, but hooks must be called unconditionally
+  const [localOutput,    setLocalOutput]    = useState(portalOutput)
 
   function openSwitcher() {
     setShowSwitcher(true)
@@ -410,7 +412,6 @@ export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem
   }
 
   // Generic portal view
-  const [localOutput, setLocalOutput] = useState(portalOutput)
 
   function handleFieldChange(fieldId, value) {
     setLocalOutput(prev => ({ ...prev, [fieldId]: value }))
