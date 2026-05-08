@@ -11,53 +11,117 @@ function getPortalComponent(oem) {
 }
 
 export default function NewClaim({ onNavigate }) {
-  const [uploadedFiles,  setUploadedFiles]  = useState([])
-  const [files,          setFiles]          = useState([])
-  const [pastedText,     setPastedText]     = useState('')
-  const [oems,           setOems]           = useState(null)
-  const [selectedOemId,  setSelectedOemId]  = useState('')
-  const [prompts,        setPrompts]        = useState(null)
-  const [selectedPromptId, setSelectedPromptId] = useState('')
-  const [drag,           setDrag]           = useState(false)
-  const [selectedOem,    setSelectedOem]    = useState(null)
-  const [claimId,        setClaimId]        = useState(null)
-  const [claimIds,       setClaimIds]       = useState([])
-  const [portalOutput,   setPortalOutput]   = useState({})
-  const [aiRawResponse,  setAiRawResponse]  = useState('')
-  const [usedPromptId,   setUsedPromptId]   = useState(null)
-  const [usedPromptName, setUsedPromptName] = useState('')
-  const [processing,     setProcessing]     = useState(false)
-  const [processError,   setProcessError]   = useState(null)
+  const [oemPortals,        setOemPortals]        = useState(null)
+  const [prompts,           setPrompts]           = useState(null)
+  const [selectedOemId,     setSelectedOemId]     = useState('')
+  const [selectedPromptId,  setSelectedPromptId]  = useState('')
+  const [showOemDropdown,   setShowOemDropdown]   = useState(false)
+  const [showPromptDropdown,setShowPromptDropdown]= useState(false)
+  const [files,             setFiles]             = useState([])
+  const [pastedText,        setPastedText]        = useState('')
+  const [drag,              setDrag]              = useState(false)
+  const [processing,        setProcessing]        = useState(false)
+  const [processError,      setProcessError]      = useState(null)
+  const [portalOutput,      setPortalOutput]      = useState(null)
+  const [claimId,           setClaimId]           = useState(null)
+  const [claimIds,          setClaimIds]          = useState([])
+  const [aiRawResponse,     setAiRawResponse]     = useState('')
+  const [usedPromptName,    setUsedPromptName]    = useState('')
+  const [usedPromptId,      setUsedPromptId]      = useState(null)
+  const [pendingProcess,    setPendingProcess]    = useState(false)
 
-  const fileRef = useRef()
+  const fileRef          = useRef()
+  const pasteDebounceRef = useRef(null)
   const ACCEPT = '.pdf,.doc,.docx'
 
+  // ── Fetch OEM portals and prompts on mount ──────────────────────────────────
   useEffect(() => {
     fetch('/api/oem/configs')
       .then(r => r.json())
-      .then(setOems)
-      .catch(() => setOems([]))
+      .then(setOemPortals)
+      .catch(() => setOemPortals([]))
     fetch('/api/prompts')
       .then(r => r.json())
       .then(all => setPrompts(all.filter(p => p.category === 'New Claim')))
       .catch(() => setPrompts([]))
   }, [])
 
-  // Auto-select best default prompt when OEM changes
+  // ── Auto-select portal when exactly one exists ──────────────────────────────
   useEffect(() => {
-    if (!prompts) return
-    const oem   = oems?.find(o => String(o.id) === String(selectedOemId))
+    if (!oemPortals) return
+    if (oemPortals.length === 1) {
+      setSelectedOemId(String(oemPortals[0].id))
+      setShowOemDropdown(false)
+    } else if (oemPortals.length > 1) {
+      setShowOemDropdown(true)
+    }
+  }, [oemPortals])
+
+  // ── Auto-select best prompt when OEM or prompts change ──────────────────────
+  useEffect(() => {
+    if (!prompts || !oemPortals) return
+    const oem   = oemPortals.find(o => String(o.id) === String(selectedOemId))
     const brand = (oem?.brand || oem?.name || '').toLowerCase()
     const brandDefault  = prompts.find(p => p.is_default && p.brand && p.brand.toLowerCase() === brand)
     const globalDefault = prompts.find(p => p.is_default && !p.brand)
     const best = brandDefault || globalDefault
     if (best) setSelectedPromptId(String(best.id))
-  }, [selectedOemId, prompts]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedOemId, prompts, oemPortals])
 
+  // ── Auto-trigger when all files are uploaded ────────────────────────────────
+  useEffect(() => {
+    if (!pendingProcess) return
+    const allReady = files.length > 0 && files.every(f => !f.uploading && f.r2_key)
+    if (allReady) {
+      setPendingProcess(false)
+      processClaim()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingProcess, files])
+
+  // ── Core process function ───────────────────────────────────────────────────
+  async function processClaim() {
+    const oem       = oemPortals?.find(o => String(o.id) === String(selectedOemId))
+    const hasPasted = pastedText.trim().length > 0
+    const readyFiles = files.filter(f => !f.uploading && f.r2_key)
+    if (!oem) return
+    if (!hasPasted && readyFiles.length === 0) return
+    if (processing) return
+
+    setProcessing(true)
+    setProcessError(null)
+    setPortalOutput(null)
+    try {
+      const r = await fetch('/api/claim/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          oemConfigId: oem.id,
+          files: readyFiles.map(f => ({ r2_key: f.r2_key, filename: f.filename, type: f.type, size: f.size })),
+          promptId: selectedPromptId || undefined,
+          pastedText: hasPasted ? pastedText.trim() : undefined,
+        }),
+      })
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Processing failed') }
+      const data = await r.json()
+      setClaimId(data.claimId)
+      setClaimIds(data.claimIds || [])
+      setPortalOutput(data.portalOutput || {})
+      setAiRawResponse(data.aiRawResponse || '')
+      setUsedPromptId(data.promptId || null)
+      setUsedPromptName(data.promptName || '')
+    } catch (e) {
+      setProcessError(e.message)
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  // ── File upload ─────────────────────────────────────────────────────────────
   async function handleFiles(fileList) {
     for (const f of Array.from(fileList)) {
       const ext = f.name.split('.').pop().toLowerCase()
-      if (!['pdf','doc','docx'].includes(ext)) continue
+      if (!['pdf', 'doc', 'docx'].includes(ext)) continue
 
       const tempId = Math.random().toString(36).slice(2)
       setFiles(prev => [...prev, { tempId, filename: f.name, size: f.size, type: ext, uploading: true }])
@@ -69,74 +133,58 @@ export default function NewClaim({ onNavigate }) {
         if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Upload failed') }
         const data = await r.json()
         setFiles(prev => prev.map(fi => fi.tempId === tempId ? { ...data, tempId, uploading: false } : fi))
-      } catch(e) {
+        setPendingProcess(true)
+      } catch (e) {
         setFiles(prev => prev.filter(fi => fi.tempId !== tempId))
         setProcessError(`Failed to upload ${f.name}: ${e.message}`)
       }
     }
   }
 
-  async function runProcess(filesArg, oem, promptId, pasted) {
-    setProcessing(true)
-    setProcessError(null)
-    try {
-      const r = await fetch('/api/claim/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          oemConfigId: oem?.id,
-          files: filesArg.map(f => ({ r2_key: f.r2_key, filename: f.filename, type: f.type, size: f.size })),
-          promptId: promptId || undefined,
-          pastedText: pasted || undefined,
-        }),
-      })
-      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Processing failed') }
-      const data = await r.json()
-      setClaimId(data.claimId)
-      setClaimIds(data.claimIds || [])
-      setPortalOutput(data.portalOutput || {})
-      setAiRawResponse(data.aiRawResponse || '')
-      setUsedPromptId(data.promptId || null)
-      setUsedPromptName(data.promptName || '')
-    } catch(e) {
-      setProcessError(e.message)
-    } finally {
-      setProcessing(false)
+  // ── Paste auto-trigger ──────────────────────────────────────────────────────
+  function handlePasteChange(text) {
+    setPastedText(text)
+    if (pasteDebounceRef.current) clearTimeout(pasteDebounceRef.current)
+    if (text.trim().length > 20) {
+      pasteDebounceRef.current = setTimeout(() => {
+        processClaim()
+      }, 2000)
     }
   }
 
-  function handleProcess() {
-    const oem = oems?.find(o => String(o.id) === String(selectedOemId))
-    const readyFiles = files.filter(f => !f.uploading && f.r2_key)
-    const pasted = pastedText.trim() || null
-    setUploadedFiles(readyFiles)
-    setSelectedOem(oem)
-    runProcess(readyFiles, oem, selectedPromptId || null, pasted)
+  function handlePasteBlur() {
+    if (pasteDebounceRef.current) clearTimeout(pasteDebounceRef.current)
+    if (pastedText.trim().length > 20) {
+      processClaim()
+    }
   }
 
+  // ── Reset ───────────────────────────────────────────────────────────────────
   function handleReset() {
-    setUploadedFiles([])
     setFiles([])
     setPastedText('')
-    setSelectedOem(null)
+    setPortalOutput(null)
     setClaimId(null)
     setClaimIds([])
-    setPortalOutput({})
     setAiRawResponse('')
     setUsedPromptId(null)
     setUsedPromptName('')
     setProcessError(null)
-    setSelectedOemId('')
-    setSelectedPromptId('')
+    setPendingProcess(false)
+    if (pasteDebounceRef.current) clearTimeout(pasteDebounceRef.current)
   }
 
-  const readyFiles    = files.filter(f => !f.uploading && f.r2_key)
-  const hasPastedText = pastedText.trim().length > 0
-  const canProcess    = (readyFiles.length > 0 || hasPastedText) && selectedOemId && selectedPromptId && oems?.length > 0
-  const hasPortalOutput = Object.keys(portalOutput).length > 0
+  // ── Derived state ───────────────────────────────────────────────────────────
+  const selectedOem    = oemPortals?.find(o => String(o.id) === String(selectedOemId))
+  const selectedPrompt = prompts?.find(p => String(p.id) === String(selectedPromptId))
+  const isSinglePortal = oemPortals?.length === 1
+  const readyFiles     = files.filter(f => !f.uploading && f.r2_key)
+  const hasPastedText  = pastedText.trim().length > 0
+  const canProcess     = (readyFiles.length > 0 || hasPastedText) && selectedOemId && !processing
+  const PortalComponent = getPortalComponent(selectedOem)
 
-  // Empty state: no portals configured
-  if (oems !== null && oems.length === 0) {
+  // ── Empty state: no portals configured ─────────────────────────────────────
+  if (oemPortals !== null && oemPortals.length === 0) {
     return (
       <div className="card" style={{ textAlign: 'center', padding: '40px 24px' }}>
         <div style={{ fontSize: 36, marginBottom: 10 }}>🖥️</div>
@@ -158,6 +206,7 @@ export default function NewClaim({ onNavigate }) {
 
   return (
     <div>
+      {/* ── Global error banner ── */}
       {processError && (
         <div className="err" style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between' }}>
           <span>{processError}</span>
@@ -165,181 +214,225 @@ export default function NewClaim({ onNavigate }) {
         </div>
       )}
 
-      {/* ── Input section (always visible until portal output appears) ── */}
-      {!hasPortalOutput && !processing && (
-        <div className="card">
-          {/* Row 1: OEM Portal + Prompt dropdowns */}
-          <div style={{ display: 'flex', gap: 16, marginBottom: 18 }}>
-            <div className="field-group" style={{ flex: 1 }}>
-              <label className="field-label">OEM Portal <span style={{ color: 'var(--crit)' }}>*</span></label>
-              {oems === null ? (
-                <div style={{ fontSize: 13, color: 'var(--grey-muted)' }}>Loading…</div>
-              ) : (
-                <select className="field-input" value={selectedOemId} onChange={e => setSelectedOemId(e.target.value)}>
-                  <option value="">Select OEM Portal…</option>
-                  {oems.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
-              )}
-            </div>
-
-            <div className="field-group" style={{ flex: 1 }}>
-              <label className="field-label">Prompt <span style={{ color: 'var(--crit)' }}>*</span></label>
-              {prompts === null ? (
-                <div style={{ fontSize: 13, color: 'var(--grey-muted)' }}>Loading…</div>
-              ) : prompts.length === 0 ? (
-                <div style={{ fontSize: 13, color: 'var(--warn)', padding: '8px 12px', background: 'var(--warn-bg)', borderRadius: 6, border: '1px solid var(--warn-ring)' }}>
-                  No prompts configured — add one in Custom Prompts.
-                </div>
-              ) : (
-                <select
-                  className="field-input"
-                  value={selectedPromptId}
-                  onChange={e => setSelectedPromptId(e.target.value)}
-                >
-                  <option value="">Select…</option>
-                  {prompts.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}{p.brand ? ` · ${p.brand}` : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
-
-          {/* Row 2: Two-column upload area */}
-          <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
-
-            {/* Left: File upload */}
-            <div style={{ flex: 1, opacity: hasPastedText ? 0.4 : 1, pointerEvents: hasPastedText ? 'none' : 'auto', transition: 'opacity .15s' }}>
-              <div
-                className={`drop-zone ${drag ? 'over' : ''}`}
-                onClick={() => fileRef.current.click()}
-                onDragOver={e => { e.preventDefault(); setDrag(true) }}
-                onDragLeave={() => setDrag(false)}
-                onDrop={e => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files) }}
-              >
-                <input ref={fileRef} type="file" accept={ACCEPT} multiple onChange={e => handleFiles(e.target.files)} />
-                <div className="drop-zone-icon">📋</div>
-                <div className="drop-zone-title">Drop job card files here</div>
-                <div className="drop-zone-sub">PDF or Word documents · Click to browse · Multiple files supported</div>
-              </div>
-              {files.length > 0 && (
-                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {files.map((f, i) => (
-                    <div key={f.tempId || i} style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '8px 12px', borderRadius: 6,
-                      background: f.uploading ? 'var(--grey-bg)' : 'rgba(22,163,74,.06)',
-                      border: `1px solid ${f.uploading ? 'var(--grey-border)' : '#86EFAC'}`,
-                    }}>
-                      <span style={{ fontSize: 16 }}>{f.type === 'pdf' ? '📄' : '📝'}</span>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.filename}</span>
-                      <span style={{ fontSize: 11, color: 'var(--grey-muted)', whiteSpace: 'nowrap' }}>{(f.size / 1024).toFixed(0)} KB</span>
-                      {f.uploading
-                        ? <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-                        : <span style={{ color: 'var(--ok)', fontWeight: 700 }}>✓</span>
-                      }
-                      {!f.uploading && (
-                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--grey-muted)', fontSize: 14, padding: '0 2px' }}
-                          onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}>✕</button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {hasPastedText && (
-                <div style={{ marginTop: 6, fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>
-                  Using paste input — clear to use file upload
-                </div>
-              )}
-            </div>
-
-            {/* Centre: OR divider */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 20px' }}>
-              <div style={{ flex: 1, width: 1, background: '#E5E7EB' }} />
-              <span style={{ padding: '10px 0', fontWeight: 700, fontSize: 14, color: '#6B7280', userSelect: 'none' }}>OR</span>
-              <div style={{ flex: 1, width: 1, background: '#E5E7EB' }} />
-            </div>
-
-            {/* Right: Paste textarea */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', opacity: files.length > 0 ? 0.4 : 1, pointerEvents: files.length > 0 ? 'none' : 'auto', transition: 'opacity .15s' }}>
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>Paste Prompt Result</div>
-                <div style={{ fontSize: 12, color: 'var(--grey-muted)' }}>Paste raw text from a job card or extracted prompt result</div>
-              </div>
-              <textarea
-                value={pastedText}
-                onChange={e => setPastedText(e.target.value)}
-                placeholder="Paste raw job card text or prompt result here..."
-                style={{
-                  flex: 1, minHeight: 160, width: '100%', padding: '12px',
-                  border: '1px solid #D1D5DB', borderRadius: 6,
-                  fontFamily: 'monospace', fontSize: 13, lineHeight: 1.5,
-                  resize: 'vertical', outline: 'none', boxSizing: 'border-box',
-                  color: 'var(--text)', background: '#fff',
-                }}
-              />
-              {files.length > 0 && (
-                <div style={{ marginTop: 6, fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>
-                  Using file upload — clear files to use paste input
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Row 3: Process button */}
-          <div style={{ marginTop: 18 }}>
+      <div className="card">
+        {/* ── Status line (single portal) or loading ── */}
+        {oemPortals === null ? (
+          <div style={{ fontSize: 13, color: 'var(--grey-muted)', marginBottom: 14 }}>Loading portals…</div>
+        ) : isSinglePortal && selectedOem ? (
+          <div style={{ fontSize: 13, color: 'var(--grey-muted)', marginBottom: 14, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--navy)', fontWeight: 500 }}>
+              Submitting to: {selectedOem.name} · {selectedPrompt?.name || 'Default Mapping'}
+            </span>
             <button
-              className="btn btn-primary"
-              disabled={!canProcess}
-              onClick={handleProcess}
-              style={{ width: '100%', justifyContent: 'center' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--grey-muted)', fontSize: 12, textDecoration: 'underline', padding: 0 }}
+              onClick={() => setShowOemDropdown(v => !v)}
             >
-              Process Job Card
+              Change portal
+            </button>
+            <button
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--grey-muted)', fontSize: 12, textDecoration: 'underline', padding: 0 }}
+              onClick={() => setShowPromptDropdown(v => !v)}
+            >
+              Change mapping
             </button>
           </div>
-        </div>
-      )}
+        ) : null}
+
+        {/* ── OEM dropdown (always shown for multiple portals, toggled for single) ── */}
+        {showOemDropdown && (
+          <div className="field-group" style={{ marginBottom: 14 }}>
+            <label className="field-label">OEM Portal <span style={{ color: 'var(--crit)' }}>*</span></label>
+            <select className="field-input" value={selectedOemId} onChange={e => setSelectedOemId(e.target.value)}>
+              <option value="">Select OEM Portal…</option>
+              {(oemPortals || []).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </div>
+        )}
+
+        {/* ── Prompt dropdown (hidden by default, revealed via Change mapping) ── */}
+        {showPromptDropdown && (
+          <div className="field-group" style={{ marginBottom: 14 }}>
+            <label className="field-label">Prompt Mapping</label>
+            {prompts === null ? (
+              <div style={{ fontSize: 13, color: 'var(--grey-muted)' }}>Loading…</div>
+            ) : prompts.length === 0 ? (
+              <div style={{ fontSize: 13, color: 'var(--warn)', padding: '8px 12px', background: 'var(--warn-bg)', borderRadius: 6, border: '1px solid var(--warn-ring)' }}>
+                No prompts configured — add one in Custom Prompts.
+              </div>
+            ) : (
+              <select
+                className="field-input"
+                value={selectedPromptId}
+                onChange={e => setSelectedPromptId(e.target.value)}
+              >
+                <option value="">Select…</option>
+                {prompts.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}{p.brand ? ` · ${p.brand}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        {/* ── Upload / paste area (collapses after processing) ── */}
+        {portalOutput !== null && !processing ? (
+          /* Collapsed summary after processing */
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '8px 12px', background: 'rgba(22,163,74,.06)', border: '1px solid #86EFAC', borderRadius: 6 }}>
+            <span style={{ color: 'var(--ok)', fontWeight: 700 }}>✓</span>
+            <span style={{ flex: 1, fontSize: 13, color: 'var(--navy)' }}>
+              {files.length > 0 ? `${files[0].filename} · ${(files[0].size / 1024).toFixed(0)} KB` : 'Pasted text processed'}
+            </span>
+            <button onClick={handleReset} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--grey-muted)', fontSize: 12, textDecoration: 'underline' }}>
+              ↺ Start new claim
+            </button>
+          </div>
+        ) : !processing ? (
+          /* Full upload zone */
+          <>
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
+              {/* Left: File upload */}
+              <div style={{ flex: 1, opacity: hasPastedText ? 0.4 : 1, pointerEvents: hasPastedText ? 'none' : 'auto', transition: 'opacity .15s' }}>
+                <div
+                  className={`drop-zone ${drag ? 'over' : ''}`}
+                  onClick={() => fileRef.current.click()}
+                  onDragOver={e => { e.preventDefault(); setDrag(true) }}
+                  onDragLeave={() => setDrag(false)}
+                  onDrop={e => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files) }}
+                >
+                  <input ref={fileRef} type="file" accept={ACCEPT} multiple onChange={e => handleFiles(e.target.files)} />
+                  <div className="drop-zone-icon">📋</div>
+                  <div className="drop-zone-title">Drop job card files here</div>
+                  <div className="drop-zone-sub">PDF or Word documents · Click to browse · Multiple files supported</div>
+                </div>
+                {files.length > 0 && (
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {files.map((f, i) => (
+                      <div key={f.tempId || i} style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 12px', borderRadius: 6,
+                        background: f.uploading ? 'var(--grey-bg)' : 'rgba(22,163,74,.06)',
+                        border: `1px solid ${f.uploading ? 'var(--grey-border)' : '#86EFAC'}`,
+                      }}>
+                        <span style={{ fontSize: 16 }}>{f.type === 'pdf' ? '📄' : '📝'}</span>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--navy)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.filename}</span>
+                        <span style={{ fontSize: 11, color: 'var(--grey-muted)', whiteSpace: 'nowrap' }}>{(f.size / 1024).toFixed(0)} KB</span>
+                        {f.uploading
+                          ? <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                          : <span style={{ color: 'var(--ok)', fontWeight: 700 }}>✓</span>
+                        }
+                        {!f.uploading && (
+                          <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--grey-muted)', fontSize: 14, padding: '0 2px' }}
+                            onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}>✕</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {hasPastedText && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>
+                    Using paste input — clear to use file upload
+                  </div>
+                )}
+              </div>
+
+              {/* Centre: OR divider */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 20px' }}>
+                <div style={{ flex: 1, width: 1, background: '#E5E7EB' }} />
+                <span style={{ padding: '10px 0', fontWeight: 700, fontSize: 14, color: '#6B7280', userSelect: 'none' }}>OR</span>
+                <div style={{ flex: 1, width: 1, background: '#E5E7EB' }} />
+              </div>
+
+              {/* Right: Paste textarea */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', opacity: files.length > 0 ? 0.4 : 1, pointerEvents: files.length > 0 ? 'none' : 'auto', transition: 'opacity .15s' }}>
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 2 }}>Paste Prompt Result</div>
+                  <div style={{ fontSize: 12, color: 'var(--grey-muted)' }}>Paste raw text from a job card or extracted prompt result</div>
+                </div>
+                <textarea
+                  value={pastedText}
+                  onChange={e => handlePasteChange(e.target.value)}
+                  onBlur={handlePasteBlur}
+                  placeholder="Paste raw job card text or prompt result here..."
+                  style={{
+                    flex: 1, minHeight: 160, width: '100%', padding: '12px',
+                    border: '1px solid #D1D5DB', borderRadius: 6,
+                    fontFamily: 'monospace', fontSize: 13, lineHeight: 1.5,
+                    resize: 'vertical', outline: 'none', boxSizing: 'border-box',
+                    color: 'var(--text)', background: '#fff',
+                  }}
+                />
+                {files.length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#6B7280', fontStyle: 'italic' }}>
+                    Using file upload — clear files to use paste input
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Backup process button */}
+            <div style={{ marginTop: 18 }}>
+              <button
+                className="btn btn-primary"
+                disabled={!canProcess}
+                onClick={processClaim}
+                style={{ width: '100%', justifyContent: 'center' }}
+              >
+                Process Job Card
+              </button>
+            </div>
+          </>
+        ) : null}
+      </div>
 
       {/* ── Processing spinner ── */}
       {processing && (
-        <div className="loader">
+        <div className="loader" style={{ marginTop: 24 }}>
           <div className="spinner" />
           <div className="loader-title">Extracting and mapping…</div>
           <div className="loader-sub">
-            {uploadedFiles.length > 0
-              ? `Working on ${uploadedFiles.length} document${uploadedFiles.length !== 1 ? 's' : ''}`
+            {files.length > 0
+              ? `Working on ${files.length} document${files.length !== 1 ? 's' : ''}`
               : 'Working on pasted text'}
           </div>
         </div>
       )}
 
-      {/* ── Portal output (conditionally shown when processing is done) ── */}
-      {hasPortalOutput && !processing && (
-        <PortalView
-          claimId={claimId}
-          claimIds={claimIds}
-          portalOutput={portalOutput}
-          aiRawResponse={aiRawResponse}
-          oem={selectedOem}
-          uploadedFiles={uploadedFiles}
-          usedPromptId={usedPromptId}
-          usedPromptName={usedPromptName}
-          onRerun={(promptId) => runProcess(uploadedFiles, selectedOem, promptId, pastedText.trim() || null)}
-          onReset={handleReset}
-        />
+      {/* ── Portal mirror (inline, below upload section) ── */}
+      {portalOutput !== null && !processing && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--navy)', fontFamily: 'Barlow, sans-serif' }}>
+              Portal View — {selectedOem?.name || 'Portal'}
+            </h3>
+            {usedPromptName && (
+              <span style={{ fontSize: 12, color: 'var(--grey-muted)' }}>
+                Analysed using prompt: <strong style={{ color: 'var(--navy)' }}>{usedPromptName}</strong>
+              </span>
+            )}
+          </div>
+          <PortalComponent
+            data={portalOutput}
+            portalOutput={portalOutput}
+            portalFields={selectedOem?.portal_fields || []}
+            onChange={(fieldId, val) => setPortalOutput(prev => ({ ...prev, [fieldId]: val }))}
+            claimId={claimId}
+            onReset={handleReset}
+            onStatusChange={undefined}
+            readOnly={false}
+          />
+        </div>
       )}
     </div>
   )
 }
 
-// ── Portal View (with prompt switcher) ────────────────────────────────────────
+// ── Portal View export (used by ClaimHistory) ─────────────────────────────────
 export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem, usedPromptId, usedPromptName, onRerun, onReset, onStatusChange, readOnly = false }) {
   const [showSwitcher,   setShowSwitcher]   = useState(false)
   const [availPrompts,   setAvailPrompts]   = useState(null)
   const [selectedPid,    setSelectedPid]    = useState(null)
-  // localOutput is used only in the generic portal path, but hooks must be called unconditionally
   const [localOutput,    setLocalOutput]    = useState(portalOutput)
 
   function openSwitcher() {
@@ -358,7 +451,6 @@ export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem
     onRerun(selectedPid)
   }
 
-  // Route to brand-specific portal mirror
   const PortalComponent = getPortalComponent(oem)
   const portalFields = oem?.portal_fields || []
 
@@ -397,7 +489,6 @@ export function PortalView({ claimId, claimIds, portalOutput, aiRawResponse, oem
   }
 
   // Generic portal view
-
   function handleFieldChange(fieldId, value) {
     setLocalOutput(prev => ({ ...prev, [fieldId]: value }))
   }
