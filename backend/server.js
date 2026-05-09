@@ -814,6 +814,113 @@ app.post('/api/claim/upload-files', claimUpload.single('file'), async (req, res)
   }
 });
 
+// ── Identify job card (fast, no-persist, no-hallucination) ────────────────
+const IDENTIFY_SYSTEM_PROMPT = `You are a warranty claim document reader. Your only job is to extract three pieces of identifying information from a job card document: the OEM brand, the machine model, and the job number.
+
+CRITICAL RULES — read carefully:
+
+1. Only return values that are LITERALLY WRITTEN in the document. Do not infer, guess, complete, or extend partial text.
+
+2. If you cannot find a field clearly written in the document, return an empty string for that field. Do NOT guess based on other fields, serial number patterns, or prior knowledge.
+
+3. Return the brand exactly as it appears. Common OEM brand names include Terex, Powerscreen, Doppstadt, Develon (formerly Doosan), JCB, Volvo, Caterpillar, Komatsu, Hyundai. Do NOT substitute or normalise the brand — return it as written. If the document says "TEREX MPS" return "TEREX MPS", not "Terex".
+
+4. The job number may be labelled "Job No.", "Work Order", "WO", "Job Card #", or similar. Return the value, not the label.
+
+5. The machine model is typically a product name + identifier (e.g. "Trakker MP-3000", "Powerscreen Premiertrak 400"). Return what is written.
+
+6. Set confidence based on the LOWEST-confidence field:
+   - 'high': all three fields are unambiguously written in clear, legible text
+   - 'medium': at least one field is partially obscured, abbreviated, or slightly ambiguous but still readable
+   - 'low': any field is missing, illegible, or you had to guess
+
+Use the identify_job_card tool to return your findings.
+
+Do NOT add any commentary, reasoning, or explanation outside the tool call. Do NOT continue extraction beyond these three fields.`;
+
+const identifyTool = {
+  name: 'identify_job_card',
+  description: 'Extract ONLY the brand, machine model, and job number that are LITERALLY VISIBLE in the warranty job card text. Do not infer, guess, or use prior knowledge.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      brand: {
+        type: 'string',
+        description: 'OEM brand name AS WRITTEN in the document. If not literally visible, return empty string. Do not infer from serial number patterns or model names.'
+      },
+      machine: {
+        type: 'string',
+        description: 'Machine model AS WRITTEN in the document. If not literally visible, return empty string.'
+      },
+      jobNumber: {
+        type: 'string',
+        description: 'Job card or work order number AS WRITTEN in the document. If not literally visible, return empty string.'
+      },
+      confidence: {
+        type: 'string',
+        enum: ['high', 'medium', 'low'],
+        description: "high: all three fields clearly visible and unambiguous. medium: at least one field present but slightly ambiguous. low: any field missing or guessed."
+      }
+    },
+    required: ['brand', 'machine', 'jobNumber', 'confidence']
+  }
+};
+
+app.post('/api/claim/identify', async (req, res) => {
+  try {
+    const { files, pastedText } = req.body;
+
+    const contentBlocks = [];
+
+    if (files && files.length > 0) {
+      for (const f of files) {
+        const buf = await getFileBuffer(f.r2_key);
+        const isDocx = ['doc', 'docx'].includes((f.type || '').toLowerCase());
+        if (isDocx) {
+          try {
+            const { value: text } = await mammoth.extractRawText({ buffer: buf });
+            contentBlocks.push({ type: 'text', text: `[Document: ${f.filename}]\n${text}` });
+          } catch {
+            contentBlocks.push({ type: 'text', text: `[Document: ${f.filename} — text extraction failed]` });
+          }
+        } else {
+          contentBlocks.push({
+            type: 'document',
+            source: { type: 'base64', media_type: 'application/pdf', data: buf.toString('base64') },
+          });
+        }
+      }
+    }
+
+    if (pastedText && pastedText.trim()) {
+      contentBlocks.push({ type: 'text', text: pastedText.trim() });
+    }
+
+    if (contentBlocks.length === 0) {
+      return res.status(400).json({ error: 'No input provided' });
+    }
+
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 256,
+      system: IDENTIFY_SYSTEM_PROMPT,
+      tools: [identifyTool],
+      tool_choice: { type: 'tool', name: 'identify_job_card' },
+      messages: [{ role: 'user', content: contentBlocks }],
+    });
+
+    const toolUse = response.content.find(b => b.type === 'tool_use');
+    if (!toolUse) {
+      return res.json({ brand: '', machine: '', jobNumber: '', confidence: 'low', error: 'No tool_use in response' });
+    }
+
+    res.json(toolUse.input);
+  } catch (err) {
+    console.error('[identify] error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/claim/process — analyse with Claude Opus, save claim
 app.post('/api/claim/process', async (req, res) => {
   try {
