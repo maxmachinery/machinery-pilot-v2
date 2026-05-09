@@ -1,0 +1,243 @@
+/* Machinery Pilot floating widget — all classes prefixed mp- */
+/* z-index and position use !important to override host page styles */
+
+.mp-widget {
+  position: fixed !important;
+  bottom: 20px !important;
+  right: 20px !important;
+  z-index: 2147483647 !important;
+  width: 340px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+  font-size: 14px;
+  color: #111827;
+  overflow: hidden;
+  transition: height 200ms ease-out, box-shadow 200ms ease-out;
+}
+
+.mp-widget.mp-warning-border {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18), 0 0 0 2px #f59e0b;
+}
+
+.mp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #1e3a5f;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.mp-header-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mp-minimise-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255,255,255,0.7);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+.mp-minimise-btn:hover { color: #fff; background: rgba(255,255,255,0.15); }
+
+.mp-body {
+  padding: 14px;
+}
+
+/* Drop zone */
+.mp-drop-zone {
+  border: 2px dashed #cbd5e0;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 200ms, background 200ms;
+}
+.mp-drop-zone.mp-drag-over {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+/* Textarea inside drop zone — the actual paste target */
+.mp-input-area {
+  display: block;
+  width: 100%;
+  min-height: 90px;
+  border: none !important;
+  outline: none !important;
+  background: transparent;
+  resize: none;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+  font-size: 13px;
+  color: #374151;
+  padding: 12px;
+  box-sizing: border-box;
+  cursor: text;
+  line-height: 1.5;
+  transition: border-color 200ms;
+}
+.mp-input-area::placeholder {
+  color: #9ca3af;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Char counter */
+.mp-char-count {
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 4px;
+  text-align: right;
+}
+
+/* Paste + Browse buttons row */
+.mp-paste-btn, .mp-browse-btn {
+  background: none;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif !important;
+  transition: background 150ms, border-color 150ms;
+}
+.mp-paste-btn:hover, .mp-browse-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+/* Status text */
+.mp-status {
+  font-size: 13px;
+  color: #374151;
+  margin: 10px 0 6px;
+}
+.mp-status-sub {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Verify state */
+.mp-verify-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 10px;
+}
+.mp-verify-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  align-items: baseline;
+}
+.mp-verify-label {
+  font-size: 12px;
+  color: #6b7280;
+  width: 70px;
+  flex-shrink: 0;
+}
+.mp-verify-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+.mp-verify-value.mp-empty {
+  color: #9ca3af;
+  font-style: italic;
+  font-weight: 400;
+}
+.mp-portal-line {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 10px 0 8px;
+}
+.mp-portal-line.mp-mismatch {
+  color: #f59e0b;
+  font-weight: 500;
+}
+.mp-confidence-note {
+  font-size: 11px;
+  color: #f59e0b;
+  margin-bottom: 8px;
+}
+
+/* Buttons */
+.mp-btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.mp-btn {
+  flex: 1;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms;
+}
+.mp-btn-clear { background: #dc2626; color: #fff; }
+.mp-btn-clear:hover { background: #b91c1c; }
+.mp-btn-fill { background: #16a34a; color: #fff; }
+.mp-btn-fill:hover { background: #15803d; }
+.mp-btn-neutral {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+}
+.mp-btn-neutral:hover { background: #e5e7eb; }
+
+/* Spinner */
+.mp-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: mp-spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+@keyframes mp-spin { to { transform: rotate(360deg); } }
+
+/* Minimised bubble */
+.mp-minimised {
+  position: fixed !important;
+  bottom: 20px !important;
+  right: 20px !important;
+  z-index: 2147483647 !important;
+  width: 48px;
+  height: 48px;
+  background: #1e3a5f;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  font-size: 22px;
+  transition: box-shadow 200ms;
+}
+.mp-minimised:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.3); }
+
+/* Success state */
+.mp-success-icon { color: #16a34a; font-size: 22px; margin-right: 6px; }
+.mp-success-count { font-size: 15px; font-weight: 700; color: #111827; }
+.mp-success-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
+
+/* Error state */
+.mp-error-icon { color: #dc2626; font-size: 20px; margin-right: 6px; }
+.mp-error-msg { font-size: 13px; color: #374151; }
+.mp-error-sub { font-size: 12px; color: #6b7280; margin-top: 4px; }
