@@ -823,7 +823,7 @@ CRITICAL RULES — read carefully:
 
 2. If you cannot find a field clearly written in the document, return an empty string for that field. Do NOT guess based on other fields, serial number patterns, or prior knowledge.
 
-3. Return the brand exactly as it appears. Common OEM brand names include Terex, Powerscreen, Doppstadt, Develon (formerly Doosan), JCB, Volvo, Caterpillar, Komatsu, Hyundai. Do NOT substitute or normalise the brand — return it as written. If the document says "TEREX MPS" return "TEREX MPS", not "Terex".
+3. Return the brand exactly as it appears. Common OEM brand names include Terex, Powerscreen, Fuchs, Doppstadt, Develon (formerly Doosan), JCB, Volvo, Caterpillar, Komatsu, Hyundai. Note: Terex, Fuchs, and Powerscreen are all manufactured by the Terex group and share the same warranty submission portal — but you must still return the brand exactly as written in the document. Do not consolidate or normalise to "Terex". Do NOT substitute or normalise the brand — return it as written. If the document says "TEREX MPS" return "TEREX MPS", not "Terex".
 
 4. The job number may be labelled "Job No.", "Work Order", "WO", "Job Card #", or similar. Return the value, not the label.
 
@@ -1031,8 +1031,22 @@ app.post('/api/claim/process', async (req, res) => {
       }
     }
 
-    // Build JSON schema from OEM's portal_fields
-    const portalFields = oem?.portal_fields || [];
+    // When input is pasted prompt-result text, use the fixed 9-field schema
+    // (the user is pasting a 12-field extraction result, not a raw job card)
+    const PROMPT_RESULT_FIELDS = hasPasted ? [
+      { fieldId: 'application',   name: 'Application',   description: 'Machine application context if present in narrative' },
+      { fieldId: 'hours_run',     name: 'Hours Run',      description: 'machine_hours from the prompt result' },
+      { fieldId: 'helpdesk_ref',  name: 'Help Desk Ref',  description: 'Leave empty unless explicitly present' },
+      { fieldId: 'dealer_ref',    name: 'Dealer Ref',     description: 'job_number from the prompt result' },
+      { fieldId: 'repair_date',   name: 'Repair Date',    description: 'date_of_repair from the prompt result (DD/MM/YYYY)' },
+      { fieldId: 'description',   name: 'Description',    description: 'reason from the prompt result' },
+      { fieldId: 'suspect_cause', name: 'Suspect Cause',  description: 'cause from the prompt result' },
+      { fieldId: 'action_taken',  name: 'Action Taken',   description: 'resolution from the prompt result' },
+      { fieldId: 'postcode',      name: 'Post Code',      description: 'postcode from the prompt result' },
+    ] : null;
+
+    // Build JSON schema from OEM's portal_fields (or prompt-result override)
+    const portalFields = PROMPT_RESULT_FIELDS || oem?.portal_fields || [];
     const hasSchema = portalFields.length > 0;
 
     let portalOutput = {};
@@ -1043,11 +1057,28 @@ app.post('/api/claim/process', async (req, res) => {
       const inputSchema = {
         type: 'object',
         properties: portalFields.reduce((acc, f) => {
-          acc[f.fieldId] = { type: 'string', description: f.name };
+          acc[f.fieldId] = { type: 'string', description: f.description || f.name };
           return acc;
         }, {}),
         required: portalFields.map(f => f.fieldId),
       };
+
+      // For pasted prompt-result input, prepend explicit mapping instructions
+      const pastedMappingPrefix = hasPasted
+        ? `You are mapping a 12-field warranty prompt result to a Terex portal.\n` +
+          `The prompt result contains fields: job_number, machine_serial, model, date_of_failure, date_of_repair, machine_hours, part_numbers, reason, cause, resolution, engineer_narrative, postcode.\n\n` +
+          `Map them to these 9 Terex portal fields ONLY:\n` +
+          `  application  ← machine application context from engineer_narrative if present\n` +
+          `  hours_run    ← machine_hours\n` +
+          `  helpdesk_ref ← leave empty unless explicitly present\n` +
+          `  dealer_ref   ← job_number\n` +
+          `  repair_date  ← date_of_repair\n` +
+          `  description  ← reason\n` +
+          `  suspect_cause ← cause\n` +
+          `  action_taken ← resolution\n` +
+          `  postcode     ← postcode\n\n` +
+          `Do NOT fabricate values. If a source field is missing or empty, return an empty string. Do NOT infer.\n\n`
+        : '';
 
       const toolResp = await anthropic.messages.create({
         model: 'claude-opus-4-6',
@@ -1064,7 +1095,7 @@ app.post('/api/claim/process', async (req, res) => {
             ...contentBlocks,
             {
               type: 'text',
-              text: resolvedPrompt + '\n\nUse the submit_warranty_claim tool to return the extracted fields.',
+              text: pastedMappingPrefix + resolvedPrompt + '\n\nUse the submit_warranty_claim tool to return the extracted fields.',
             },
           ],
         }],
