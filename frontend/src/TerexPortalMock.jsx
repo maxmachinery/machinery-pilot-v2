@@ -137,22 +137,7 @@ function Section({ children, cols, style = {} }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function TerexPortalMock() {
-  const [fields, setFields] = useState({
-    customer_name:     'Lancashire Crushers',
-    claim_id:          '5271755',
-    type:              'Machine Warranty',
-    dealer:            'Blue Machinery (Central) Li...',
-    brand:             'Powerscreen',
-    model:             'PTR450',
-    currency:          'GBP',
-    submitted_total:   '0.00',
-    total_paid:        '0.00',
-    product:           'Crushers',
-    serial_no:         'PIDPR450JOMS79465',
-    engine_sn:         '7458929',
-    registration_date: '2025-11-21',
-    failure_date:      '2026-04-21',
-  })
+  const [fields, setFields] = useState({})
   const [activeTab, setActiveTab] = useState('details')
 
   const fp = { fields, setFields }
@@ -221,28 +206,38 @@ export default function TerexPortalMock() {
       {/* ── SECTION E — Action bar ────────────────────────────────────── */}
       <div style={{
         padding: '8px 14px', background: BG,
-        display: 'flex', alignItems: 'center', gap: 16, ...NO_SEL,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        ...NO_SEL,
       }}>
-        <Lbl>Action</Lbl>
-        <select style={{ ...staticInp, width: 210 }} defaultValue="requestor">
-          <option value="requestor">Requestor Action Needed</option>
-        </select>
-        <Lbl color={LBL_EMPH}>Status (1)</Lbl>
-        <select style={{ ...staticInp, width: 100 }} defaultValue="draft">
-          <option value="draft">Draft</option>
-        </select>
+        {/* Left: Action and Status dropdowns */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1 }}>
+          <Lbl>Action</Lbl>
+          <select style={{ ...staticInp, width: 210 }}>
+            <option value="">— Select —</option>
+            <option value="requestor">Requestor Action Needed</option>
+          </select>
+          <Lbl color={LBL_EMPH}>Status (1)</Lbl>
+          <select style={{ ...staticInp, width: 100 }}>
+            <option value="">— Select —</option>
+            <option value="draft">Draft</option>
+          </select>
+        </div>
+        {/* Centre: Submit button */}
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+          <button
+            style={{
+              background: '#ea580c', color: '#fff',
+              padding: '6px 24px', borderRadius: 4, fontWeight: 600,
+              fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: FONT,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#c2460a' }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#ea580c' }}
+          >
+            ✓ Submit
+          </button>
+        </div>
+        {/* Right: empty equal-weight spacer */}
         <div style={{ flex: 1 }} />
-        <button
-          style={{
-            background: '#ea580c', color: '#fff',
-            padding: '6px 20px', borderRadius: 4, fontWeight: 600,
-            fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: FONT,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#c2460a' }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#ea580c' }}
-        >
-          ✓ Submit
-        </button>
       </div>
 
       {/* ── White gap ─────────────────────────────────────────────────── */}
@@ -318,7 +313,7 @@ export default function TerexPortalMock() {
             <Lbl style={{ paddingTop: 6 }}>Description</Lbl>
             <textarea
               id="description"
-              rows={3}
+              rows={6}
               className="mp-required-field"
               value={fields['description'] || ''}
               onChange={e => setFields(prev => ({ ...prev, description: e.target.value }))}
@@ -332,7 +327,7 @@ export default function TerexPortalMock() {
             <Lbl style={{ paddingTop: 6 }}>Suspect Cause</Lbl>
             <textarea
               id="suspect_cause"
-              rows={3}
+              rows={6}
               className="mp-required-field"
               value={fields['suspect_cause'] || ''}
               onChange={e => setFields(prev => ({ ...prev, suspect_cause: e.target.value }))}
@@ -346,7 +341,7 @@ export default function TerexPortalMock() {
             <Lbl style={{ paddingTop: 6 }}>Action Taken</Lbl>
             <textarea
               id="action_taken"
-              rows={3}
+              rows={6}
               className="mp-required-field"
               value={fields['action_taken'] || ''}
               onChange={e => setFields(prev => ({ ...prev, action_taken: e.target.value }))}
