@@ -301,56 +301,31 @@ export default function TerexPortalMock() {
             <FDate id="date_closed"       label="Date Closed"       {...fp} />
           </div>
 
-          {/* ── SECTION K — Textareas: label in col 1, textarea spans 2–5 */}
-          {/* Each label+textarea pair occupies one implicit grid row.     */}
-          {/* CSS auto-placement: label → col 1; textarea(gridColumn 2/-1) */}
-          {/* → cols 2-5 of the same row. No spacers needed.              */}
-          <div style={{
-            ...GRID5,
-            alignItems: 'start',
-            rowGap: 10,
-          }}>
-            <Lbl style={{ paddingTop: 6 }}>Description</Lbl>
-            <textarea
-              id="description"
-              rows={6}
-              className="mp-required-field"
-              value={fields['description'] || ''}
-              onChange={e => setFields(prev => ({ ...prev, description: e.target.value }))}
-              style={{
-                gridColumn: '2 / -1', padding: '4px 8px', boxSizing: 'border-box',
-                borderRadius: 0, fontSize: 12, fontFamily: FONT,
-                color: TEXT_INPUT, background: BG_WHITE, outline: 'none', resize: 'vertical',
-              }}
-            />
-
-            <Lbl style={{ paddingTop: 6 }}>Suspect Cause</Lbl>
-            <textarea
-              id="suspect_cause"
-              rows={6}
-              className="mp-required-field"
-              value={fields['suspect_cause'] || ''}
-              onChange={e => setFields(prev => ({ ...prev, suspect_cause: e.target.value }))}
-              style={{
-                gridColumn: '2 / -1', padding: '4px 8px', boxSizing: 'border-box',
-                borderRadius: 0, fontSize: 12, fontFamily: FONT,
-                color: TEXT_INPUT, background: BG_WHITE, outline: 'none', resize: 'vertical',
-              }}
-            />
-
-            <Lbl style={{ paddingTop: 6 }}>Action Taken</Lbl>
-            <textarea
-              id="action_taken"
-              rows={6}
-              className="mp-required-field"
-              value={fields['action_taken'] || ''}
-              onChange={e => setFields(prev => ({ ...prev, action_taken: e.target.value }))}
-              style={{
-                gridColumn: '2 / -1', padding: '4px 8px', boxSizing: 'border-box',
-                borderRadius: 0, fontSize: 12, fontFamily: FONT,
-                color: TEXT_INPUT, background: BG_WHITE, outline: 'none', resize: 'vertical',
-              }}
-            />
+          {/* ── SECTION K — Textareas: each row spans all 5 columns ────── */}
+          {/* Each wrapper div has gridColumn 1/-1 so label+textarea      */}
+          {/* share a full-width flex row. Gap matches F component (6px). */}
+          <div style={{ ...GRID5, alignItems: 'start', rowGap: 8 }}>
+            {[
+              { id: 'description',   label: 'Description'   },
+              { id: 'suspect_cause', label: 'Suspect Cause' },
+              { id: 'action_taken',  label: 'Action Taken'  },
+            ].map(({ id, label }) => (
+              <div key={id} style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                <Lbl style={{ paddingTop: 5 }}>{label}</Lbl>
+                <textarea
+                  id={id}
+                  rows={3}
+                  className="mp-required-field"
+                  value={fields[id] || ''}
+                  onChange={e => setFields(prev => ({ ...prev, [id]: e.target.value }))}
+                  style={{
+                    flex: 1, padding: '4px 8px', boxSizing: 'border-box',
+                    borderRadius: 2, fontSize: 12, fontFamily: FONT,
+                    color: TEXT_INPUT, background: BG_WHITE, outline: 'none', resize: 'vertical',
+                  }}
+                />
+              </div>
+            ))}
           </div>
 
         </div>
