@@ -21,7 +21,7 @@ function escHtml(s) {
 
 const BACKEND_URL = import.meta.env.DEV ? 'http://localhost:3002' : window.location.origin
 
-const PORTAL_NAME = 'Terex MP Portal (demo)'
+const PORTAL_NAME = 'Terex Portal'
 
 export default function Widget() {
   const [widgetState, setWidgetState] = useState('IDLE')
@@ -250,15 +250,42 @@ export default function Widget() {
   const isLowConfidence = identified?.confidence === 'low'
   const isMedConfidence = identified?.confidence === 'medium'
   const isMismatch = identified?.brand && !isBrandMatch(identified.brand, PORTAL_NAME)
-  const portalDisplay = `${PORTAL_NAME} (Fuchs · Powerscreen · Terex)`
+  const portalDisplay = PORTAL_NAME.toLowerCase().includes('terex')
+    ? `${PORTAL_NAME} (Fuchs · Powerscreen · Terex)`
+    : PORTAL_NAME
 
   if (widgetState === 'MINIMISED') {
     return (
       <div
-        className="mp-minimised"
-        onClick={() => { setWidgetState(prevWidgetState) }}
-        title="Machinery Pilot — click to expand"
-      >⚡</div>
+        onClick={() => setWidgetState(prevWidgetState)}
+        title="Expand Machinery Pilot widget"
+        style={{
+          position: 'fixed',
+          bottom: 20,
+          right: 20,
+          zIndex: 2147483647,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          height: 36,
+          padding: '0 16px',
+          borderRadius: 18,
+          background: '#1e3a5f',
+          color: '#ffffff',
+          fontFamily: "'Inter', system-ui, sans-serif",
+          fontSize: 14,
+          fontWeight: 600,
+          cursor: 'pointer',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+          userSelect: 'none',
+          transition: 'background 150ms',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = '#162d4a'}
+        onMouseLeave={e => e.currentTarget.style.background = '#1e3a5f'}
+      >
+        <span>⚡</span>
+        <span>Fill Portal</span>
+      </div>
     )
   }
 
@@ -310,7 +337,7 @@ export default function Widget() {
               </button>
             </div>
             <div className="mp-portal-line" style={{ marginTop: 8 }}>
-              Submitting to: {PORTAL_NAME}
+              Submitting to {PORTAL_NAME}
             </div>
           </>
         )}
@@ -347,8 +374,8 @@ export default function Widget() {
 
             <div className={`mp-portal-line${isMismatch ? ' mp-mismatch' : ''}`}>
               {isMismatch
-                ? `⚠ Submitting to: ${portalDisplay} — but job card is ${identified.brand}`
-                : `Submitting to: ${portalDisplay}`}
+                ? `⚠ Submitting to ${portalDisplay} — but job card is ${identified.brand}`
+                : `Submitting to ${portalDisplay}`}
             </div>
 
             <div className="mp-btn-row">

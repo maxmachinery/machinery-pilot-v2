@@ -26,6 +26,16 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5', padding: '40px' }}>
       <ExtensionDemoBanner />
+      <div style={{
+        fontFamily: "'Inter', system-ui, sans-serif",
+        fontSize: 14,
+        color: '#4b5563',
+        margin: '0 0 16px',
+        lineHeight: 1.6,
+      }}>
+        <div>⏱ Watch how warranty claims get filled in seconds, not minutes.</div>
+        <div style={{ marginTop: 2, color: '#6b7280' }}>Try it: paste a sample warranty job card extraction into the widget below.</div>
+      </div>
       {/* Scaling wrapper — shrinks portal to fit viewport, never enlarges */}
       <div style={{
         transformOrigin: 'top left',

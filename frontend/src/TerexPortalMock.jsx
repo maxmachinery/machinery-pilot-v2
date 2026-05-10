@@ -6,74 +6,97 @@ const LBL_DEF    = '#3a5a87'
 const LBL_EMPH   = '#0000FF'
 const BORDER_DEF = '#cbd5e0'
 const BORDER_RED = '#c53030'
-const BG         = '#F5F5F5'
+const BG         = '#ececec'
 const BG_WHITE   = '#ffffff'
 const TAB_INACT  = '#5b7d9d'
 const INFO_ICON  = '#3182ce'
 const TEXT_INPUT = '#2d3748'
 const NO_SEL     = { userSelect: 'none', WebkitUserSelect: 'none' }
 
-const RED_FIELDS = new Set([
-  'customer_name', 'serial_no',
+const REQUIRED_FIELDS = new Set([
   'application', 'hours_run', 'helpdesk_ref', 'dealer_ref',
   'repair_date', 'description', 'suspect_cause', 'action_taken',
 ])
-const EMPH_FIELDS = new Set(['customer_name', 'serial_no'])
-const DATE_FIELDS = new Set(['registration_date', 'failure_date', 'repair_date', 'submitted_date', 'date_closed'])
 
-// ── Style helpers ─────────────────────────────────────────────────────────────
-function lblSty(id) {
-  return {
-    fontSize: 11, fontFamily: FONT, fontWeight: 700,
-    textAlign: 'right', lineHeight: '26px',
-    color: EMPH_FIELDS.has(id) ? LBL_EMPH : LBL_DEF,
-    minWidth: 110, flexShrink: 0,
-    ...NO_SEL,
-  }
+function borderFor(id, fields) {
+  if (REQUIRED_FIELDS.has(id) && !fields[id]) return `1px solid ${BORDER_RED}`
+  return `1px solid ${BORDER_DEF}`
 }
 
-function inpSty(id, extra = {}) {
-  return {
-    height: 26, padding: '4px 8px', boxSizing: 'border-box',
-    border: `1px solid ${RED_FIELDS.has(id) ? BORDER_RED : BORDER_DEF}`,
-    borderRadius: 0, fontSize: 12, fontFamily: FONT,
-    color: TEXT_INPUT, background: BG_WHITE, outline: 'none',
-    ...extra,
-  }
+// ── Info icon ─────────────────────────────────────────────────────────────────
+function InfoIcon() {
+  return (
+    <div style={{
+      width: 15, height: 15, borderRadius: '50%', background: INFO_ICON,
+      flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      ...NO_SEL,
+    }} title="Info">
+      <span style={{ color: '#fff', fontSize: 9, fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1 }}>i</span>
+    </div>
+  )
 }
-
-// ── White separator ───────────────────────────────────────────────────────────
-const WhiteGap = () => <div style={{ height: 5, background: BG_WHITE }} />
 
 // ── Text field ────────────────────────────────────────────────────────────────
-function F({ id, label, fields, setFields }) {
+function F({ id, label, fields, setFields, labelColor, extra }) {
+  const border = borderFor(id, fields)
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-      <label htmlFor={id} style={lblSty(id)}>{label}</label>
+    <div>
+      <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: labelColor || LBL_DEF, marginBottom: 2, ...NO_SEL }}>
+        {label}
+      </div>
       <input
         id={id}
-        type="text"
         value={fields[id] || ''}
         onChange={e => setFields(prev => ({ ...prev, [id]: e.target.value }))}
-        style={{ ...inpSty(id), flex: 1, minWidth: 0 }}
+        style={{
+          width: '100%', height: 26, padding: '4px 8px', boxSizing: 'border-box',
+          border, borderRadius: 0, fontSize: 12, fontFamily: FONT,
+          color: TEXT_INPUT, background: BG_WHITE, outline: 'none',
+          ...(extra || {}),
+        }}
       />
     </div>
   )
 }
 
-// ── Date field ────────────────────────────────────────────────────────────────
-function FDate({ id, label, fields, setFields }) {
-  const border = `1px solid ${RED_FIELDS.has(id) ? BORDER_RED : BORDER_DEF}`
+// ── Textarea field ────────────────────────────────────────────────────────────
+function TA({ id, label, fields, setFields, rows = 3 }) {
+  const border = borderFor(id, fields)
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-      <label htmlFor={id} style={lblSty(id)}>{label}</label>
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF, marginBottom: 2, ...NO_SEL }}>{label}</div>
+      <textarea
+        id={id}
+        rows={rows}
+        value={fields[id] || ''}
+        onChange={e => setFields(prev => ({ ...prev, [id]: e.target.value }))}
+        style={{
+          width: '100%', padding: '4px 8px', boxSizing: 'border-box',
+          border, borderRadius: 0, fontSize: 12, fontFamily: FONT,
+          color: TEXT_INPUT, background: BG_WHITE, outline: 'none', resize: 'vertical',
+        }}
+      />
+    </div>
+  )
+}
+
+// ── Date field (text input + calendar icon) ───────────────────────────────────
+function FDate({ id, label, fields, setFields }) {
+  const border = borderFor(id, fields)
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF, marginBottom: 2, ...NO_SEL }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'stretch' }}>
         <input
           id={id}
           type="text"
           value={fields[id] || ''}
           onChange={e => setFields(prev => ({ ...prev, [id]: e.target.value }))}
-          style={{ ...inpSty(id), width: 96, borderRight: 'none' }}
+          style={{
+            height: 26, padding: '4px 8px', boxSizing: 'border-box',
+            border, borderRight: 'none', borderRadius: 0, fontSize: 12, fontFamily: FONT,
+            color: TEXT_INPUT, background: BG_WHITE, outline: 'none', flex: 1, minWidth: 0,
+          }}
         />
         <div style={{
           position: 'relative', width: 22, height: 26, flexShrink: 0,
@@ -94,39 +117,16 @@ function FDate({ id, label, fields, setFields }) {
   )
 }
 
-// ── Multiline textarea ────────────────────────────────────────────────────────
-function FM({ id, label, fields, setFields }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, width: '100%' }}>
-      <label htmlFor={id} style={{ ...lblSty(id), paddingTop: 4, lineHeight: '18px' }}>{label}</label>
-      <textarea
-        id={id}
-        value={fields[id] || ''}
-        onChange={e => setFields(prev => ({ ...prev, [id]: e.target.value }))}
-        style={{
-          flex: 1, height: 52, minWidth: 0,
-          border: `1px solid ${RED_FIELDS.has(id) ? BORDER_RED : BORDER_DEF}`,
-          borderRadius: 0, fontSize: 12, fontFamily: FONT,
-          color: TEXT_INPUT, background: BG_WHITE,
-          padding: '4px 8px', resize: 'vertical',
-          lineHeight: 1.5, outline: 'none', boxSizing: 'border-box',
-        }}
-      />
-    </div>
-  )
-}
-
-// ── Row wrapper ───────────────────────────────────────────────────────────────
-function Row({ children, cols, style = {} }) {
+// ── Section wrapper ───────────────────────────────────────────────────────────
+function Section({ children, cols, style = {} }) {
   return (
     <div style={{
-      display: cols ? 'grid' : 'flex',
+      display: cols ? 'grid' : 'block',
       gridTemplateColumns: cols,
-      gap: '6px 24px',
-      padding: '10px 12px',
+      gap: 12,
+      padding: '8px 14px',
       background: BG,
-      alignItems: 'center',
-      flexWrap: 'wrap',
+      alignItems: 'start',
       ...style,
     }}>
       {children}
@@ -136,7 +136,22 @@ function Row({ children, cols, style = {} }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function TerexPortalMock() {
-  const [fields, setFields] = useState({})
+  const [fields, setFields] = useState({
+    customer_name:    'Lancashire Crushers',
+    claim_id:         '5271755',
+    type:             'Machine Warranty',
+    dealer:           'Blue Machinery (Central) Li...',
+    brand:            'Powerscreen',
+    model:            'PTR450',
+    currency:         'GBP',
+    submitted_total:  '0.00',
+    total_paid:       '0.00',
+    product:          'Crushers',
+    serial_no:        'PIDPR450JOMS79465',
+    engine_sn:        '7458929',
+    registration_date: '2025-11-21',
+    failure_date:     '2026-04-21',
+  })
   const [activeTab, setActiveTab] = useState('details')
 
   const fp = { fields, setFields }
@@ -159,81 +174,90 @@ export default function TerexPortalMock() {
   return (
     <div style={{ width: 1400, fontFamily: FONT, fontSize: 12, border: '1px solid #b0b0b0', background: BG }}>
 
-      {/* ── Title bar ────────────────────────────────────────────────── */}
+      {/* ── SECTION B — Header banner ─────────────────────────────────── */}
       <div style={{
-        background: '#1e6091', color: '#fff', padding: '5px 12px',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        background: '#2d3f5e', color: 'white', padding: '6px 14px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         ...NO_SEL,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <span style={{ fontWeight: 700, fontSize: 13, fontFamily: FONT }}>Terex MP — Warranty Claim</span>
+        <span style={{ fontWeight: 700, fontSize: 14 }}>Terex MP — Warranty Claim</span>
+      </div>
+
+      {/* ── SECTION C — Metadata row 1 (6 columns) ───────────────────── */}
+      <div style={{ background: BG, padding: '8px 14px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, alignItems: 'start' }}>
+          <F id="claim_id" label="Claim ID"  {...fp} />
+          <F id="type"     label="Type"      {...fp} />
+          <F id="dealer"   label="Dealer"    {...fp} />
+          <F id="brand"    label="Brand"     {...fp} />
+          {/* Model with info icon */}
+          <div>
+            <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF, marginBottom: 2, ...NO_SEL }}>Model</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input
+                id="model"
+                type="text"
+                value={fields['model'] || ''}
+                onChange={e => setFields(prev => ({ ...prev, model: e.target.value }))}
+                style={{ ...staticInp, flex: 1, minWidth: 0 }}
+              />
+              <InfoIcon />
+            </div>
+          </div>
+          {/* 6th column — empty */}
+          <div />
         </div>
       </div>
 
-      {/* ── Metadata block ───────────────────────────────────────────── */}
-      <div style={{ padding: '8px 12px', background: BG }}>
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
-          gap: '6px 24px', marginBottom: 6, alignItems: 'center',
-        }}>
-          <F id="claim_id" label="Claim ID" {...fp} />
-          <F id="type"     label="Type"     {...fp} />
-          <F id="dealer"   label="Dealer"   {...fp} />
-          <F id="brand"    label="Brand"    {...fp} />
-          {/* Model with info icon */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-            <label htmlFor="model" style={lblSty('model')}>Model</label>
-            <input
-              id="model"
-              type="text"
-              value={fields['model'] || ''}
-              onChange={e => setFields(prev => ({ ...prev, model: e.target.value }))}
-              style={{ ...inpSty('model'), flex: 1, minWidth: 0 }}
-            />
-            <div style={{
-              width: 15, height: 15, borderRadius: '50%', background: INFO_ICON,
-              flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              ...NO_SEL,
-            }}>
-              <span style={{ color: '#fff', fontSize: 9, fontStyle: 'italic', fontFamily: 'Georgia, serif', lineHeight: 1 }}>i</span>
-            </div>
-          </div>
-        </div>
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
-          gap: '6px 24px', alignItems: 'center',
-        }}>
+      {/* ── SECTION D — Metadata row 2 (3 columns) ───────────────────── */}
+      <div style={{ background: BG, padding: '4px 14px 8px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, alignItems: 'start' }}>
           <F id="currency"        label="Currency"        {...fp} />
           <F id="submitted_total" label="Submitted Total" {...fp} />
           <F id="total_paid"      label="Total Paid"      {...fp} />
-          <div /><div />
+          <div /><div /><div />
         </div>
       </div>
 
-      {/* ── White gap after metadata ──────────────────────────────────── */}
-      <WhiteGap />
+      {/* ── White gap ─────────────────────────────────────────────────── */}
+      <div style={{ height: 5, background: BG_WHITE }} />
 
-      {/* ── Action bar ───────────────────────────────────────────────── */}
+      {/* ── SECTION E — Action bar ────────────────────────────────────── */}
       <div style={{
-        padding: '8px 12px', background: BG,
-        display: 'flex', alignItems: 'center', gap: 8, ...NO_SEL,
+        padding: '8px 14px', background: BG,
+        display: 'flex', alignItems: 'center', gap: 16, ...NO_SEL,
       }}>
         <span style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF }}>Action</span>
-        <input type="text" readOnly value="Requestor Action Needed" style={{ ...staticInp, width: 210 }} />
-        <span style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_EMPH, marginLeft: 16 }}>Status (1)</span>
-        <input type="text" readOnly value="Draft" style={{ ...staticInp, width: 100 }} />
+        <select style={{ ...staticInp, width: 210 }} defaultValue="requestor">
+          <option value="requestor">Requestor Action Needed</option>
+        </select>
+        <span style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_EMPH }}>Status (1)</span>
+        <select style={{ ...staticInp, width: 100 }} defaultValue="draft">
+          <option value="draft">Draft</option>
+        </select>
+        <button
+          style={{
+            marginLeft: 'auto', background: '#ea580c', color: '#fff',
+            padding: '6px 20px', borderRadius: 4, fontWeight: 600,
+            fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: FONT,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#c2460a' }}
+          onMouseLeave={e => { e.currentTarget.style.background = '#ea580c' }}
+        >
+          ✓ Submit
+        </button>
       </div>
 
-      {/* ── White gap after action bar ────────────────────────────────── */}
-      <WhiteGap />
+      {/* ── White gap ─────────────────────────────────────────────────── */}
+      <div style={{ height: 5, background: BG_WHITE }} />
 
-      {/* ── Tab bar ───────────────────────────────────────────────────── */}
+      {/* ── SECTION F — Tab bar ───────────────────────────────────────── */}
       <div style={{ display: 'flex', background: BG_WHITE, ...NO_SEL }}>
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
             fontSize: 12, fontFamily: FONT,
             padding: '6px 22px',
-            border: 'none', borderRight: `1px solid #c8c8c8`,
+            border: 'none', borderRight: '1px solid #c8c8c8',
             borderRadius: '3px 3px 0 0',
             cursor: 'pointer',
             background: activeTab === tab.id ? BG : TAB_INACT,
@@ -249,61 +273,64 @@ export default function TerexPortalMock() {
       {/* ── Details tab ──────────────────────────────────────────────── */}
       {activeTab === 'details' && (
         <div>
-          <Row cols="repeat(4, 1fr)">
-            <F id="customer_name" label="Customer Name" {...fp} />
+
+          {/* ── SECTION G — Customer row (4 columns) ──────────────────── */}
+          <Section cols="repeat(4, 1fr)" style={{ padding: '12px 14px' }}>
+            <F id="customer_name" label="Customer Name" labelColor={LBL_EMPH} {...fp} />
             <F id="customer_no"   label="Customer No."  {...fp} />
             <F id="tax_no"        label="Tax No."       {...fp} />
-            <F id="site_address"  label="Site Address"  {...fp} />
-          </Row>
-          <Row cols="repeat(5, 1fr)">
+            {/* Site address — textarea with info icon */}
+            <div>
+              <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF, marginBottom: 2, ...NO_SEL }}>Site Address</div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                <textarea
+                  id="site_address"
+                  rows={2}
+                  value={fields['site_address'] || ''}
+                  onChange={e => setFields(prev => ({ ...prev, site_address: e.target.value }))}
+                  style={{
+                    flex: 1, minWidth: 0, padding: '4px 8px', boxSizing: 'border-box',
+                    border: `1px solid ${BORDER_DEF}`, borderRadius: 0, fontSize: 12, fontFamily: FONT,
+                    color: TEXT_INPUT, background: BG_WHITE, outline: 'none', resize: 'vertical',
+                  }}
+                />
+                <InfoIcon />
+              </div>
+            </div>
+          </Section>
+
+          {/* ── SECTION H — Product row (5 columns) ───────────────────── */}
+          <Section cols="repeat(5, 1fr)">
             <F id="product"     label="Product"     {...fp} />
-            <F id="serial_no"   label="Serial No."  {...fp} />
+            <F id="serial_no"   label="Serial No."  labelColor={LBL_EMPH} {...fp} />
             <F id="settings"    label="Settings"    {...fp} />
             <F id="application" label="Application" {...fp} />
             <F id="engine_sn"   label="Engine SN"   {...fp} />
-          </Row>
-          <Row>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <label htmlFor="hours_run" style={lblSty('hours_run')}>Hours Run</label>
-              <input
-                id="hours_run"
-                type="text"
-                value={fields['hours_run'] || ''}
-                onChange={e => setFields(prev => ({ ...prev, hours_run: e.target.value }))}
-                style={{ ...inpSty('hours_run'), width: 90 }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
-              <label htmlFor="helpdesk_ref" style={lblSty('helpdesk_ref')}>HelpDesk Ref</label>
-              <input
-                id="helpdesk_ref"
-                type="text"
-                value={fields['helpdesk_ref'] || ''}
-                onChange={e => setFields(prev => ({ ...prev, helpdesk_ref: e.target.value }))}
-                style={{ ...inpSty('helpdesk_ref'), width: 280 }}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
-              <label htmlFor="dealer_ref" style={lblSty('dealer_ref')}>Dealer Ref</label>
-              <input
-                id="dealer_ref"
-                type="text"
-                value={fields['dealer_ref'] || ''}
-                onChange={e => setFields(prev => ({ ...prev, dealer_ref: e.target.value }))}
-                style={{ ...inpSty('dealer_ref'), width: 280 }}
-              />
-            </div>
-          </Row>
-          <Row>
+          </Section>
+
+          {/* ── SECTION I — References row (3 columns) ────────────────── */}
+          <Section cols="repeat(3, 1fr)">
+            <F id="hours_run"    label="Hours Run"    {...fp} />
+            <F id="helpdesk_ref" label="HelpDesk Ref" {...fp} />
+            <F id="dealer_ref"   label="Dealer Ref"   {...fp} />
+          </Section>
+
+          {/* ── SECTION J — Dates row (5 columns) ─────────────────────── */}
+          <Section cols="repeat(5, 1fr)">
             <FDate id="registration_date" label="Registration Date" {...fp} />
             <FDate id="failure_date"      label="Failure Date"      {...fp} />
             <FDate id="repair_date"       label="Repair Date"       {...fp} />
             <FDate id="submitted_date"    label="Submitted Date"    {...fp} />
             <FDate id="date_closed"       label="Date Closed"       {...fp} />
-          </Row>
-          <Row><FM id="description"   label="Description"   {...fp} /></Row>
-          <Row><FM id="suspect_cause" label="Suspect Cause" {...fp} /></Row>
-          <Row><FM id="action_taken"  label="Action Taken"  {...fp} /></Row>
+          </Section>
+
+          {/* ── SECTION K — Textareas ─────────────────────────────────── */}
+          <div style={{ background: BG, padding: '8px 14px' }}>
+            <TA id="description"   label="Description"   {...fp} rows={3} />
+            <TA id="suspect_cause" label="Suspect Cause" {...fp} rows={3} />
+            <TA id="action_taken"  label="Action Taken"  {...fp} rows={3} />
+          </div>
+
         </div>
       )}
 
@@ -313,26 +340,6 @@ export default function TerexPortalMock() {
           This section is not configured in the mock.
         </div>
       )}
-
-      {/* ── Footer ───────────────────────────────────────────────────── */}
-      <div style={{
-        background: BG_WHITE, padding: '10px 12px',
-        borderTop: '1px solid #d0d0d0',
-        display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12,
-        ...NO_SEL,
-      }}>
-        <button
-          style={{
-            background: '#1e6091', color: '#fff', border: 'none',
-            padding: '12px 24px', fontSize: 14, fontFamily: FONT, fontWeight: 700,
-            letterSpacing: '0.05em', cursor: 'pointer', borderRadius: 4,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#174e73' }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#1e6091' }}
-        >
-          Submit Claim
-        </button>
-      </div>
 
     </div>
   )

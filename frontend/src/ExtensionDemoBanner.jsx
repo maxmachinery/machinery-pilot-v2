@@ -40,8 +40,37 @@ const installBtnStyle = {
   cursor: 'pointer',
 }
 
+function EmailLink() {
+  const [underline, setUnderline] = useState(false)
+  return (
+    <a
+      href="mailto:hello@machinerypilot.com"
+      style={{ color: '#2563eb', textDecoration: underline ? 'underline' : 'none' }}
+      onMouseEnter={() => setUnderline(true)}
+      onMouseLeave={() => setUnderline(false)}
+    >
+      hello@machinerypilot.com
+    </a>
+  )
+}
+
+function ModalEmailLink() {
+  const [underline, setUnderline] = useState(false)
+  return (
+    <a
+      href="mailto:hello@machinerypilot.com"
+      style={{ color: '#2563eb', textDecoration: underline ? 'underline' : 'none' }}
+      onMouseEnter={() => setUnderline(true)}
+      onMouseLeave={() => setUnderline(false)}
+    >
+      hello@machinerypilot.com
+    </a>
+  )
+}
+
 export default function ExtensionDemoBanner() {
   const [visible, setVisible] = useState(false)
+  const [showModal, setShowModal] = useState(false)
 
   useEffect(() => {
     const dismissed = localStorage.getItem(DISMISS_KEY)
@@ -55,55 +84,78 @@ export default function ExtensionDemoBanner() {
 
   function handleInstallClick(e) {
     e.preventDefault()
-    alert('Coming soon — the extension will be available on the Chrome Web Store and Edge Add-ons.')
+    setShowModal(true)
   }
 
   if (!visible) return null
 
   return (
-    <div style={{
-      background: '#f5f7fa',
-      border: '1px solid #d1d5db',
-      borderRadius: 8,
-      padding: '14px 20px',
-      marginBottom: 24,
-      fontSize: 15,
-      fontFamily: BANNER_FONT,
-      fontWeight: 500,
-      letterSpacing: '-0.01em',
-      color: '#4b5563',
-      display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      gap: 16,
-    }}>
-      <div style={{ flex: 1 }}>
-        <span style={{ marginRight: 6 }}>ℹ</span>
-        <strong>This is a demo.</strong> The widget below will appear in your browser as a Chrome or Edge extension when used on your actual Terex Portal.
-        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <a href="#" onClick={handleInstallClick} style={installBtnStyle}>
-            <ChromeLogo /> Install for Chrome
-          </a>
-          <a href="#" onClick={handleInstallClick} style={installBtnStyle}>
-            <EdgeLogo /> Install for Edge
-          </a>
+    <>
+      <div style={{
+        background: '#f5f7fa',
+        border: '1px solid #d1d5db',
+        borderRadius: 8,
+        padding: '14px 20px',
+        marginBottom: 24,
+        fontSize: 15,
+        fontFamily: BANNER_FONT,
+        fontWeight: 500,
+        letterSpacing: '-0.01em',
+        color: '#4b5563',
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: 16,
+      }}>
+        <div style={{ flex: 1 }}>
+          <span style={{ marginRight: 6 }}>ℹ</span>
+          <strong>This is a demo.</strong>{' '}When used on your OEM portals, the widget in the lower right-hand corner will appear in your Chrome or Edge browser. Learn how we help teams submit claims faster and recover more value. Email <EmailLink />.
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <a href="#" onClick={handleInstallClick} style={installBtnStyle}>
+              <ChromeLogo /> Install for Chrome
+            </a>
+            <a href="#" onClick={handleInstallClick} style={installBtnStyle}>
+              <EdgeLogo /> Install for Edge
+            </a>
+          </div>
         </div>
+        <button
+          onClick={dismiss}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#9ca3af',
+            fontSize: 18,
+            fontFamily: BANNER_FONT,
+            lineHeight: 1,
+            padding: '2px 4px',
+            flexShrink: 0,
+          }}
+          title="Dismiss"
+        >✕</button>
       </div>
-      <button
-        onClick={dismiss}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: '#9ca3af',
-          fontSize: 18,
-          fontFamily: BANNER_FONT,
-          lineHeight: 1,
-          padding: '2px 4px',
-          flexShrink: 0,
-        }}
-        title="Dismiss"
-      >✕</button>
-    </div>
+
+      {showModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            style={{ background: '#fff', borderRadius: 12, padding: 32, maxWidth: 460, width: '90%', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#0D1F3C', marginBottom: 16 }}>Coming soon</div>
+            <p style={{ fontSize: 15, fontWeight: 500, color: '#4b5563', lineHeight: 1.5, marginBottom: 24 }}>
+              Learn about our Google Chrome and Microsoft Edge integrations. Faster submissions. Lower warranty WIP. Higher recovery rate. Email{' '}
+              <ModalEmailLink />.
+            </p>
+            <button onClick={() => setShowModal(false)} style={{ background: '#16a34a', color: '#fff', width: '100%', height: 36, border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: 'pointer' }}>
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
