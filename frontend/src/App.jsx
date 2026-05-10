@@ -33,7 +33,7 @@ export default function App() {
         margin: '0 0 16px',
         lineHeight: 1.6,
       }}>
-        <div>⏱ Watch how warranty claims get filled in seconds, not minutes.</div>
+        <div>⏱ Watch how our AI helps fill warranty claims in seconds.</div>
         <div style={{ marginTop: 2, color: '#6b7280' }}>Try it: paste a sample warranty job card extraction into the widget below.</div>
       </div>
       {/* Scaling wrapper — shrinks portal to fit viewport, never enlarges */}

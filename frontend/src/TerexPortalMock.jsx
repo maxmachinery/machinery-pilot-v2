@@ -4,8 +4,7 @@ import { useState } from 'react'
 const FONT       = "'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', sans-serif"
 const LBL_DEF    = '#3a5a87'
 const LBL_EMPH   = '#0000FF'
-const BORDER_DEF = '#cbd5e0'
-const BORDER_RED = '#c53030'
+const BORDER_DEF = '#d1d5db'
 const BG         = '#ececec'
 const BG_WHITE   = '#ffffff'
 const TAB_INACT  = '#5b7d9d'
@@ -17,11 +16,6 @@ const REQUIRED_FIELDS = new Set([
   'application', 'hours_run', 'helpdesk_ref', 'dealer_ref',
   'repair_date', 'description', 'suspect_cause', 'action_taken',
 ])
-
-function borderFor(id, fields) {
-  if (REQUIRED_FIELDS.has(id) && !fields[id]) return `1px solid ${BORDER_RED}`
-  return `1px solid ${BORDER_DEF}`
-}
 
 // ── Info icon ─────────────────────────────────────────────────────────────────
 function InfoIcon() {
@@ -36,22 +30,37 @@ function InfoIcon() {
   )
 }
 
-// ── Text field ────────────────────────────────────────────────────────────────
-function F({ id, label, fields, setFields, labelColor, extra }) {
-  const border = borderFor(id, fields)
+// ── Shared label ──────────────────────────────────────────────────────────────
+function Lbl({ children, color, top }) {
   return (
-    <div>
-      <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: labelColor || LBL_DEF, marginBottom: 2, ...NO_SEL }}>
-        {label}
-      </div>
+    <div style={{
+      fontSize: 11, fontFamily: FONT, fontWeight: 700,
+      color: color || LBL_DEF,
+      flexShrink: 0, whiteSpace: 'nowrap',
+      ...(top ? { marginTop: 5 } : {}),
+      ...NO_SEL,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+// ── Text field — label LEFT of input ──────────────────────────────────────────
+function F({ id, label, fields, setFields, labelColor, extra }) {
+  const required = REQUIRED_FIELDS.has(id)
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <Lbl color={labelColor}>{label}</Lbl>
       <input
         id={id}
+        className={required ? 'mp-required-field' : undefined}
         value={fields[id] || ''}
         onChange={e => setFields(prev => ({ ...prev, [id]: e.target.value }))}
         style={{
-          width: '100%', height: 26, padding: '4px 8px', boxSizing: 'border-box',
-          border, borderRadius: 0, fontSize: 12, fontFamily: FONT,
-          color: TEXT_INPUT, background: BG_WHITE, outline: 'none',
+          flex: 1, height: 26, padding: '4px 8px', boxSizing: 'border-box',
+          border: required ? undefined : `1px solid ${BORDER_DEF}`,
+          borderRadius: 0, fontSize: 12, fontFamily: FONT,
+          color: TEXT_INPUT, background: BG_WHITE, outline: 'none', minWidth: 0,
           ...(extra || {}),
         }}
       />
@@ -59,20 +68,22 @@ function F({ id, label, fields, setFields, labelColor, extra }) {
   )
 }
 
-// ── Textarea field ────────────────────────────────────────────────────────────
+// ── Textarea — label LEFT, top-aligned ────────────────────────────────────────
 function TA({ id, label, fields, setFields, rows = 3 }) {
-  const border = borderFor(id, fields)
+  const required = REQUIRED_FIELDS.has(id)
   return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF, marginBottom: 2, ...NO_SEL }}>{label}</div>
+    <div style={{ marginBottom: 10, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+      <Lbl top>{label}</Lbl>
       <textarea
         id={id}
         rows={rows}
+        className={required ? 'mp-required-field' : undefined}
         value={fields[id] || ''}
         onChange={e => setFields(prev => ({ ...prev, [id]: e.target.value }))}
         style={{
-          width: '100%', padding: '4px 8px', boxSizing: 'border-box',
-          border, borderRadius: 0, fontSize: 12, fontFamily: FONT,
+          flex: 1, padding: '4px 8px', boxSizing: 'border-box',
+          border: required ? undefined : `1px solid ${BORDER_DEF}`,
+          borderRadius: 0, fontSize: 12, fontFamily: FONT,
           color: TEXT_INPUT, background: BG_WHITE, outline: 'none', resize: 'vertical',
         }}
       />
@@ -80,27 +91,28 @@ function TA({ id, label, fields, setFields, rows = 3 }) {
   )
 }
 
-// ── Date field (text input + calendar icon) ───────────────────────────────────
+// ── Date field — label LEFT, calendar icon on right ───────────────────────────
 function FDate({ id, label, fields, setFields }) {
-  const border = borderFor(id, fields)
+  const required = REQUIRED_FIELDS.has(id)
+  const borderStyle = required ? '2px solid #c53030' : `1px solid ${BORDER_DEF}`
   return (
-    <div>
-      <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF, marginBottom: 2, ...NO_SEL }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <Lbl>{label}</Lbl>
+      <div style={{ display: 'flex', alignItems: 'stretch', flex: 1, minWidth: 0 }}>
         <input
           id={id}
           type="text"
           value={fields[id] || ''}
           onChange={e => setFields(prev => ({ ...prev, [id]: e.target.value }))}
           style={{
-            height: 26, padding: '4px 8px', boxSizing: 'border-box',
-            border, borderRight: 'none', borderRadius: 0, fontSize: 12, fontFamily: FONT,
-            color: TEXT_INPUT, background: BG_WHITE, outline: 'none', flex: 1, minWidth: 0,
+            flex: 1, height: 26, padding: '4px 8px', boxSizing: 'border-box',
+            border: borderStyle, borderRight: 'none', borderRadius: 0, fontSize: 12, fontFamily: FONT,
+            color: TEXT_INPUT, background: BG_WHITE, outline: 'none', minWidth: 0,
           }}
         />
         <div style={{
           position: 'relative', width: 22, height: 26, flexShrink: 0,
-          border, borderLeft: 'none', background: '#ebebeb',
+          border: borderStyle, borderLeft: 'none', background: '#ebebeb',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           overflow: 'hidden', cursor: 'pointer',
         }}>
@@ -137,20 +149,20 @@ function Section({ children, cols, style = {} }) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function TerexPortalMock() {
   const [fields, setFields] = useState({
-    customer_name:    'Lancashire Crushers',
-    claim_id:         '5271755',
-    type:             'Machine Warranty',
-    dealer:           'Blue Machinery (Central) Li...',
-    brand:            'Powerscreen',
-    model:            'PTR450',
-    currency:         'GBP',
-    submitted_total:  '0.00',
-    total_paid:       '0.00',
-    product:          'Crushers',
-    serial_no:        'PIDPR450JOMS79465',
-    engine_sn:        '7458929',
+    customer_name:     'Lancashire Crushers',
+    claim_id:          '5271755',
+    type:              'Machine Warranty',
+    dealer:            'Blue Machinery (Central) Li...',
+    brand:             'Powerscreen',
+    model:             'PTR450',
+    currency:          'GBP',
+    submitted_total:   '0.00',
+    total_paid:        '0.00',
+    product:           'Crushers',
+    serial_no:         'PIDPR450JOMS79465',
+    engine_sn:         '7458929',
     registration_date: '2025-11-21',
-    failure_date:     '2026-04-21',
+    failure_date:      '2026-04-21',
   })
   const [activeTab, setActiveTab] = useState('details')
 
@@ -180,44 +192,40 @@ export default function TerexPortalMock() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         ...NO_SEL,
       }}>
-        <span style={{ fontWeight: 700, fontSize: 14 }}>Terex MP — Warranty Claim</span>
+        <span style={{ fontWeight: 700, fontSize: 14 }}>Terex Warranty Portal</span>
       </div>
 
       {/* ── SECTION C — Metadata row 1 (6 columns) ───────────────────── */}
-      <div style={{ background: BG, padding: '8px 14px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, alignItems: 'start' }}>
-          <F id="claim_id" label="Claim ID"  {...fp} />
-          <F id="type"     label="Type"      {...fp} />
-          <F id="dealer"   label="Dealer"    {...fp} />
-          <F id="brand"    label="Brand"     {...fp} />
-          {/* Model with info icon */}
-          <div>
-            <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF, marginBottom: 2, ...NO_SEL }}>Model</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <input
-                id="model"
-                type="text"
-                value={fields['model'] || ''}
-                onChange={e => setFields(prev => ({ ...prev, model: e.target.value }))}
-                style={{ ...staticInp, flex: 1, minWidth: 0 }}
-              />
-              <InfoIcon />
-            </div>
+      <Section cols="repeat(6, 1fr)" style={{ padding: '8px 14px' }}>
+        <F id="claim_id" label="Claim ID"  {...fp} />
+        <F id="type"     label="Type"      {...fp} />
+        <F id="dealer"   label="Dealer"    {...fp} />
+        <F id="brand"    label="Brand"     {...fp} />
+        {/* Model with info icon */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Lbl>Model</Lbl>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 1, minWidth: 0 }}>
+            <input
+              id="model"
+              type="text"
+              value={fields['model'] || ''}
+              onChange={e => setFields(prev => ({ ...prev, model: e.target.value }))}
+              style={{ ...staticInp, flex: 1, minWidth: 0 }}
+            />
+            <InfoIcon />
           </div>
-          {/* 6th column — empty */}
-          <div />
         </div>
-      </div>
+        {/* 6th column — empty */}
+        <div />
+      </Section>
 
-      {/* ── SECTION D — Metadata row 2 (3 columns) ───────────────────── */}
-      <div style={{ background: BG, padding: '4px 14px 8px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, alignItems: 'start' }}>
-          <F id="currency"        label="Currency"        {...fp} />
-          <F id="submitted_total" label="Submitted Total" {...fp} />
-          <F id="total_paid"      label="Total Paid"      {...fp} />
-          <div /><div /><div />
-        </div>
-      </div>
+      {/* ── SECTION D — Metadata row 2 (6 columns) ───────────────────── */}
+      <Section cols="repeat(6, 1fr)" style={{ padding: '4px 14px 8px' }}>
+        <F id="currency"        label="Currency"        {...fp} />
+        <F id="submitted_total" label="Submitted Total" {...fp} />
+        <F id="total_paid"      label="Total Paid"      {...fp} />
+        <div /><div /><div />
+      </Section>
 
       {/* ── White gap ─────────────────────────────────────────────────── */}
       <div style={{ height: 5, background: BG_WHITE }} />
@@ -227,17 +235,18 @@ export default function TerexPortalMock() {
         padding: '8px 14px', background: BG,
         display: 'flex', alignItems: 'center', gap: 16, ...NO_SEL,
       }}>
-        <span style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF }}>Action</span>
+        <Lbl>Action</Lbl>
         <select style={{ ...staticInp, width: 210 }} defaultValue="requestor">
           <option value="requestor">Requestor Action Needed</option>
         </select>
-        <span style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_EMPH }}>Status (1)</span>
+        <Lbl color={LBL_EMPH}>Status (1)</Lbl>
         <select style={{ ...staticInp, width: 100 }} defaultValue="draft">
           <option value="draft">Draft</option>
         </select>
+        <div style={{ flex: 1 }} />
         <button
           style={{
-            marginLeft: 'auto', background: '#ea580c', color: '#fff',
+            background: '#ea580c', color: '#fff',
             padding: '6px 20px', borderRadius: 4, fontWeight: 600,
             fontSize: 13, border: 'none', cursor: 'pointer', fontFamily: FONT,
           }}
@@ -279,10 +288,10 @@ export default function TerexPortalMock() {
             <F id="customer_name" label="Customer Name" labelColor={LBL_EMPH} {...fp} />
             <F id="customer_no"   label="Customer No."  {...fp} />
             <F id="tax_no"        label="Tax No."       {...fp} />
-            {/* Site address — textarea with info icon */}
-            <div>
-              <div style={{ fontSize: 11, fontFamily: FONT, fontWeight: 700, color: LBL_DEF, marginBottom: 2, ...NO_SEL }}>Site Address</div>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+            {/* Site address — label left, info icon right of textarea */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+              <Lbl top>Site Address</Lbl>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4, flex: 1, minWidth: 0 }}>
                 <textarea
                   id="site_address"
                   rows={2}
@@ -308,14 +317,14 @@ export default function TerexPortalMock() {
             <F id="engine_sn"   label="Engine SN"   {...fp} />
           </Section>
 
-          {/* ── SECTION I — References row (3 columns) ────────────────── */}
-          <Section cols="repeat(3, 1fr)">
+          {/* ── SECTION I — References (Hours Run narrow, others wider) ── */}
+          <Section cols="1fr 2.3fr 2.3fr">
             <F id="hours_run"    label="Hours Run"    {...fp} />
             <F id="helpdesk_ref" label="HelpDesk Ref" {...fp} />
             <F id="dealer_ref"   label="Dealer Ref"   {...fp} />
           </Section>
 
-          {/* ── SECTION J — Dates row (5 columns) ─────────────────────── */}
+          {/* ── SECTION J — Dates row (5 equal columns) ───────────────── */}
           <Section cols="repeat(5, 1fr)">
             <FDate id="registration_date" label="Registration Date" {...fp} />
             <FDate id="failure_date"      label="Failure Date"      {...fp} />
@@ -324,7 +333,7 @@ export default function TerexPortalMock() {
             <FDate id="date_closed"       label="Date Closed"       {...fp} />
           </Section>
 
-          {/* ── SECTION K — Textareas ─────────────────────────────────── */}
+          {/* ── SECTION K — Full-width stacked textareas ──────────────── */}
           <div style={{ background: BG, padding: '8px 14px' }}>
             <TA id="description"   label="Description"   {...fp} rows={3} />
             <TA id="suspect_cause" label="Suspect Cause" {...fp} rows={3} />

@@ -395,7 +395,7 @@ export default function Widget() {
           <>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
               <span className="mp-success-icon">✓</span>
-              <span className="mp-success-count">Filled {fillResult.filled} of 9 fields</span>
+              <span className="mp-success-count">Filled {fillResult.filled} of {fillResult.total} fields</span>
             </div>
             <div className="mp-success-sub">Review the form, then submit it in the portal.</div>
             <div className="mp-btn-row" style={{ marginTop: 14 }}>

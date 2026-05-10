@@ -1,2 +1,12 @@
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; padding: 0; }
+
+/* Terex portal mock — required field indicator (static, matches real portal) */
+.mp-required-field {
+  border: 2px solid #c53030 !important;
+  border-radius: 2px;
+}
+.mp-required-field:focus {
+  border-color: #c53030 !important;
+  outline: none;
+}

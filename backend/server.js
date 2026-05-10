@@ -1031,8 +1031,8 @@ app.post('/api/claim/process', async (req, res) => {
       }
     }
 
-    // When input is pasted prompt-result text, use the fixed 9-field schema
-    // (the user is pasting a 12-field extraction result, not a raw job card)
+    // When input is pasted prompt-result text, use the fixed 8-field schema
+    // (the user is pasting an extraction result; postcode is not mapped to the portal)
     const PROMPT_RESULT_FIELDS = hasPasted ? [
       { fieldId: 'application',   name: 'Application',   description: 'Machine application context if present in narrative' },
       { fieldId: 'hours_run',     name: 'Hours Run',      description: 'machine_hours from the prompt result' },
@@ -1042,7 +1042,6 @@ app.post('/api/claim/process', async (req, res) => {
       { fieldId: 'description',   name: 'Description',    description: 'reason from the prompt result' },
       { fieldId: 'suspect_cause', name: 'Suspect Cause',  description: 'cause from the prompt result' },
       { fieldId: 'action_taken',  name: 'Action Taken',   description: 'resolution from the prompt result' },
-      { fieldId: 'postcode',      name: 'Post Code',      description: 'postcode from the prompt result' },
     ] : null;
 
     // Build JSON schema from OEM's portal_fields (or prompt-result override)
@@ -1065,9 +1064,9 @@ app.post('/api/claim/process', async (req, res) => {
 
       // For pasted prompt-result input, prepend explicit mapping instructions
       const pastedMappingPrefix = hasPasted
-        ? `You are mapping a 12-field warranty prompt result to a Terex portal.\n` +
-          `The prompt result contains fields: job_number, machine_serial, model, date_of_failure, date_of_repair, machine_hours, part_numbers, reason, cause, resolution, engineer_narrative, postcode.\n\n` +
-          `Map them to these 9 Terex portal fields ONLY:\n` +
+        ? `You are mapping a warranty prompt result to a Terex portal.\n` +
+          `The prompt result may contain fields: job_number, machine_serial, model, date_of_failure, date_of_repair, machine_hours, part_numbers, reason, cause, resolution, engineer_narrative.\n\n` +
+          `Map them to these 8 Terex portal fields ONLY:\n` +
           `  application  ← machine application context from engineer_narrative if present\n` +
           `  hours_run    ← machine_hours\n` +
           `  helpdesk_ref ← leave empty unless explicitly present\n` +
@@ -1075,8 +1074,7 @@ app.post('/api/claim/process', async (req, res) => {
           `  repair_date  ← date_of_repair\n` +
           `  description  ← reason\n` +
           `  suspect_cause ← cause\n` +
-          `  action_taken ← resolution\n` +
-          `  postcode     ← postcode\n\n` +
+          `  action_taken ← resolution\n\n` +
           `Do NOT fabricate values. If a source field is missing or empty, return an empty string. Do NOT infer.\n\n`
         : '';
 

@@ -145,7 +145,7 @@ export default function ExtensionDemoBanner() {
             style={{ background: '#fff', borderRadius: 12, padding: 32, maxWidth: 460, width: '90%', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }}
             onClick={e => e.stopPropagation()}
           >
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#0D1F3C', marginBottom: 16 }}>Coming soon</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#0D1F3C', marginBottom: 16 }}>Contact Us</div>
             <p style={{ fontSize: 15, fontWeight: 500, color: '#4b5563', lineHeight: 1.5, marginBottom: 24 }}>
               Learn about our Google Chrome and Microsoft Edge integrations. Faster submissions. Lower warranty WIP. Higher recovery rate. Email{' '}
               <ModalEmailLink />.
