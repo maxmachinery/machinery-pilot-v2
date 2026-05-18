@@ -8,3 +8,5 @@ frontend/dist/
 *.sqlite-wal
 .env
 .DS_Store
+*.db-wal
+*.db-shm
