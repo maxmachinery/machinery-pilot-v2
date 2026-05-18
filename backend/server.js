@@ -927,7 +927,7 @@ app.post('/api/claim/identify', async (req, res) => {
 // POST /api/claim/process — analyse with Claude Opus, save claim
 app.post('/api/claim/process', async (req, res) => {
   try {
-    const { oemConfigId, prompt: promptOverride, files, promptId, repairDate, pastedText } = req.body;
+    const { oemConfigId, prompt: promptOverride, files, promptId, repairDate, pastedText, identifiedBrand } = req.body;
 
     const hasFiles  = Array.isArray(files) && files.length > 0;
     const hasPasted = typeof pastedText === 'string' && pastedText.trim().length > 0;
@@ -1039,9 +1039,9 @@ app.post('/api/claim/process', async (req, res) => {
     const PROMPT_RESULT_FIELDS = hasPasted ? [
       { fieldId: 'application',   name: 'Application',   description: 'Machine application context if present in narrative' },
       { fieldId: 'hours_run',     name: 'Hours Run',      description: 'machine_hours from the prompt result' },
-      { fieldId: 'helpdesk_ref',  name: 'Help Desk Ref',  description: 'Leave empty unless explicitly present' },
+      { fieldId: 'helpdesk_ref',  name: 'Help Desk Ref',  description: 'Always return the literal string "0"' },
       { fieldId: 'dealer_ref',    name: 'Dealer Ref',     description: 'job_number from the prompt result' },
-      { fieldId: 'repair_date',   name: 'Repair Date',    description: 'date_of_repair from the prompt result (DD/MM/YYYY)' },
+      { fieldId: 'repair_date',   name: 'Repair Date',    description: 'date_of_repair from the prompt result formatted as YYYY-MM-DD (ISO 8601). If date is in DD/MM/YYYY format, convert it. Return empty string if not present.' },
       { fieldId: 'description',   name: 'Description',    description: 'reason from the prompt result' },
       { fieldId: 'suspect_cause', name: 'Suspect Cause',  description: 'cause from the prompt result' },
       { fieldId: 'action_taken',  name: 'Action Taken',   description: 'resolution from the prompt result' },
@@ -1072,9 +1072,9 @@ app.post('/api/claim/process', async (req, res) => {
           `Map them to these 8 Terex portal fields ONLY:\n` +
           `  application  ← machine application context from engineer_narrative if present\n` +
           `  hours_run    ← machine_hours\n` +
-          `  helpdesk_ref ← leave empty unless explicitly present\n` +
+          `  helpdesk_ref ← always return "0" regardless of what is on the job card\n` +
           `  dealer_ref   ← job_number\n` +
-          `  repair_date  ← date_of_repair\n` +
+          `  repair_date  ← date_of_repair, formatted as YYYY-MM-DD (convert from DD/MM/YYYY if needed)\n` +
           `  description  ← reason\n` +
           `  suspect_cause ← cause\n` +
           `  action_taken ← resolution\n\n` +
@@ -1104,8 +1104,27 @@ app.post('/api/claim/process', async (req, res) => {
 
       const toolUse = toolResp.content.find(b => b.type === 'tool_use');
       if (toolUse) {
-        portalOutput = toolUse.input;
+        portalOutput = { ...toolUse.input };
         aiRawResponse = JSON.stringify(portalOutput);
+
+        // ── Post-processing fixes ──────────────────────────────────────────
+        // 1. Force helpdesk_ref = "0"
+        portalOutput.helpdesk_ref = '0';
+
+        // 2. Normalise repair_date to YYYY-MM-DD
+        if (portalOutput.repair_date) {
+          const ddmmyyyy = portalOutput.repair_date.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+          if (ddmmyyyy) {
+            const [, dd, mm, yyyy] = ddmmyyyy;
+            portalOutput.repair_date = `${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+          }
+        }
+
+        // 3. Fuchs brand — application field is a Fuchs-specific dropdown, not free text
+        const brandLower = (identifiedBrand || '').toLowerCase();
+        if (brandLower.includes('fuchs')) {
+          portalOutput.application = '';
+        }
       } else {
         // Fallback: Haiku extraction using OEM field IDs
         console.warn('[Process] No tool_use in response, running Haiku fallback');
@@ -1168,7 +1187,9 @@ app.post('/api/claim/process', async (req, res) => {
     );
     const claimId = ins.lastInsertRowid;
     console.log('[Process] STAGE H — saved claim id:', claimId);
-    const responsePayload = { claimId, claimIds: [claimId], portalOutput, aiRawResponse, promptId: resolvedPromptId, promptName: resolvedPromptName };
+    const brandLowerFinal = (identifiedBrand || '').toLowerCase();
+    const manualFields = brandLowerFinal.includes('fuchs') ? ['application'] : [];
+    const responsePayload = { claimId, claimIds: [claimId], portalOutput, aiRawResponse, promptId: resolvedPromptId, promptName: resolvedPromptName, manualFields };
     console.log('[Process] STAGE I — response sent to frontend:', JSON.stringify(responsePayload).slice(0, 500));
     res.json(responsePayload);
   } catch(err) {

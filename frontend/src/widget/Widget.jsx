@@ -34,6 +34,7 @@ export default function Widget() {
   const [uploadedFileInfo, setUploadedFileInfo] = useState(null)
   const [pendingPaste, setPendingPaste] = useState('')
   const [fillingMessage, setFillingMessage] = useState('')
+  const [manualFields, setManualFields] = useState([])
   const [textareaValue, setTextareaValue] = useState('')
   const [charCount, setCharCount] = useState(0)
   const pasteDebounceRef = useRef(null)
@@ -47,6 +48,7 @@ export default function Widget() {
     setUploadedFileInfo(null)
     setPendingPaste('')
     setFillingMessage('')
+    setManualFields([])
     setTextareaValue('')
     setCharCount(0)
     if (pasteDebounceRef.current) clearTimeout(pasteDebounceRef.current)
@@ -175,7 +177,7 @@ export default function Widget() {
         } catch {}
       }
 
-      const body = { oemConfigId: oemId, promptId: promptId || undefined }
+      const body = { oemConfigId: oemId, promptId: promptId || undefined, identifiedBrand: identified?.brand || undefined }
       if (uploadedFileInfo?.r2_key) {
         body.files = [{ r2_key: uploadedFileInfo.r2_key, filename: uploadedFileInfo.filename, type: uploadedFileInfo.type || 'pdf', size: uploadedFileInfo.size }]
       } else if (pendingPaste) {
@@ -190,6 +192,7 @@ export default function Widget() {
       if (!procRes.ok) throw new Error('Processing failed')
       const procData = await procRes.json()
       const portalOutput = procData.portalOutput || {}
+      setManualFields(procData.manualFields || [])
 
       setFillingMessage('Filling portal fields…')
       const result = await fillProgressively(portalOutput)
@@ -398,6 +401,11 @@ export default function Widget() {
               <span className="mp-success-count">Filled {fillResult.filled} of {fillResult.total} fields</span>
             </div>
             <div className="mp-success-sub">Review the form, then submit it in the portal.</div>
+            {manualFields.includes('application') && (
+              <div className="mp-success-sub" style={{ marginTop: 6, color: '#b45309' }}>
+                ⚠ Application field requires manual selection — please choose from the dropdown.
+              </div>
+            )}
             <div className="mp-btn-row" style={{ marginTop: 14 }}>
               <button className="mp-btn mp-btn-neutral" onClick={resetToIdle}>↺ Reset for next claim</button>
             </div>
