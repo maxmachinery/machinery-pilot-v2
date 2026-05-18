@@ -258,4 +258,31 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_telemetry_event_type ON telemetry_events(event_type);
 `);
 
+// ── Claim logs table ───────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS claim_logs (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp            TEXT    NOT NULL,
+    user_id              TEXT    NOT NULL,
+    session_id           TEXT    NOT NULL,
+    page_hostname        TEXT,
+    page_url             TEXT,
+    user_agent           TEXT,
+    raw_input            TEXT,
+    raw_input_length     INTEGER,
+    identified_brand     TEXT,
+    identified_machine   TEXT,
+    identified_job_number TEXT,
+    mappings_json        TEXT,
+    fields_mapped_count  INTEGER,
+    fields_total_count   INTEGER,
+    processing_time_ms   INTEGER,
+    success              BOOLEAN DEFAULT 1,
+    error_message        TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_claim_logs_user      ON claim_logs(user_id);
+  CREATE INDEX IF NOT EXISTS idx_claim_logs_timestamp ON claim_logs(timestamp);
+`);
+
 console.log('[DB] warranty.db ready');

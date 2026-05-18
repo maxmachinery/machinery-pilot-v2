@@ -7,6 +7,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } fro
 import fs from 'fs';
 import { createRequire } from 'module';
 import { db } from './db.js';
+import { redactPII } from './redact.js';
 import crypto  from 'crypto';
 import path    from 'path';
 import { fileURLToPath } from 'url';
@@ -926,8 +927,13 @@ app.post('/api/claim/identify', async (req, res) => {
 
 // POST /api/claim/process — analyse with Claude Opus, save claim
 app.post('/api/claim/process', async (req, res) => {
+  const startTime = Date.now();
   try {
-    const { oemConfigId, prompt: promptOverride, files, promptId, repairDate, pastedText, identifiedBrand } = req.body;
+    const {
+      oemConfigId, prompt: promptOverride, files, promptId, repairDate,
+      pastedText, identifiedBrand, identifiedMachine, identifiedJobNumber,
+      userId, sessionId, pageHostname, pageUrl, rawInput,
+    } = req.body;
 
     const hasFiles  = Array.isArray(files) && files.length > 0;
     const hasPasted = typeof pastedText === 'string' && pastedText.trim().length > 0;
@@ -1187,6 +1193,45 @@ app.post('/api/claim/process', async (req, res) => {
     );
     const claimId = ins.lastInsertRowid;
     console.log('[Process] STAGE H — saved claim id:', claimId);
+
+    // ── Claim log (best-effort, never breaks response) ─────────────────────
+    try {
+      const inputForLog = rawInput || (hasPasted ? pastedText : null) || '';
+      const redactedInput = redactPII(inputForLog);
+      const mappedCount = Object.values(portalOutput).filter(v => v && String(v).trim()).length;
+      db.prepare(`
+        INSERT INTO claim_logs (
+          timestamp, user_id, session_id,
+          page_hostname, page_url, user_agent,
+          raw_input, raw_input_length,
+          identified_brand, identified_machine, identified_job_number,
+          mappings_json, fields_mapped_count, fields_total_count,
+          processing_time_ms, success, error_message
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        new Date().toISOString(),
+        userId || 'anonymous',
+        sessionId || 'no-session',
+        pageHostname || null,
+        pageUrl || null,
+        req.headers['user-agent'] || null,
+        redactedInput || null,
+        redactedInput ? redactedInput.length : 0,
+        identifiedBrand || null,
+        identifiedMachine || null,
+        identifiedJobNumber || null,
+        JSON.stringify(portalOutput),
+        mappedCount,
+        portalFields.length || 0,
+        Date.now() - startTime,
+        1,
+        null,
+      );
+      console.log('[ClaimLog] logged claim', claimId);
+    } catch (logErr) {
+      console.error('[ClaimLog] failed to log:', logErr.message);
+    }
+
     const brandLowerFinal = (identifiedBrand || '').toLowerCase();
     const manualFields = brandLowerFinal.includes('fuchs') ? ['application'] : [];
     const responsePayload = { claimId, claimIds: [claimId], portalOutput, aiRawResponse, promptId: resolvedPromptId, promptName: resolvedPromptName, manualFields };
@@ -1601,6 +1646,49 @@ app.get('/api/telemetry/user/:userId/:secret', (req, res) => {
     ORDER BY id DESC LIMIT 200
   `).all(req.params.userId);
   res.json({ userId: req.params.userId, events });
+});
+
+// ── Admin CSV exports ──────────────────────────────────────────────────────
+
+function buildCsv(rows) {
+  if (rows.length === 0) return 'No data yet';
+  const headers = Object.keys(rows[0]);
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+      return '"' + str.replace(/"/g, '""') + '"';
+    }
+    return str;
+  };
+  return [
+    headers.join(','),
+    ...rows.map(row => headers.map(h => escapeCsv(row[h])).join(',')),
+  ].join('\n');
+}
+
+app.get('/api/admin/export/claims/:secret', (req, res) => {
+  if (req.params.secret !== process.env.TELEMETRY_ADMIN_SECRET) {
+    return res.status(403).send('Forbidden');
+  }
+  const since = req.query.since || '1970-01-01';
+  const rows = db.prepare(`SELECT * FROM claim_logs WHERE timestamp >= ? ORDER BY timestamp DESC`).all(since);
+  const csv = buildCsv(rows);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="claims-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(csv);
+});
+
+app.get('/api/admin/export/events/:secret', (req, res) => {
+  if (req.params.secret !== process.env.TELEMETRY_ADMIN_SECRET) {
+    return res.status(403).send('Forbidden');
+  }
+  const since = req.query.since || '1970-01-01';
+  const rows = db.prepare(`SELECT * FROM telemetry_events WHERE timestamp >= ? ORDER BY timestamp DESC`).all(since);
+  const csv = buildCsv(rows);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="events-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(csv);
 });
 
 // ── Catch-all SPA ─────────────────────────────────────────────────────────

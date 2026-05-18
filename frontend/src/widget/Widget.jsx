@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import './widget.css'
 import { PROMPT_RESULT_FILL_ORDER } from './fieldMapping.js'
+import { logEvent } from './telemetry.js'
+import { getOrCreateUserId, getOrCreateSessionId } from './identity.js'
 
 const TEREX_PORTAL_BRANDS = ['terex', 'fuchs', 'powerscreen']
 
@@ -40,7 +42,10 @@ export default function Widget() {
   const pasteDebounceRef = useRef(null)
   const fileInputRef = useRef(null)
 
+  useEffect(() => { logEvent('widget_loaded') }, [])
+
   function resetToIdle() {
+    logEvent('reset_clicked', { action: 'done' })
     setWidgetState('IDLE')
     setIdentified(null)
     setFillResult(null)
@@ -55,6 +60,7 @@ export default function Widget() {
   }
 
   function minimise() {
+    logEvent('widget_minimised')
     setPrevWidgetState(widgetState)
     setWidgetState('MINIMISED')
   }
@@ -66,6 +72,7 @@ export default function Widget() {
     if (pasteDebounceRef.current) clearTimeout(pasteDebounceRef.current)
     if (text.trim().length >= 50) {
       pasteDebounceRef.current = setTimeout(() => {
+        logEvent('text_pasted', { length: text.trim().length })
         setPendingPaste(text.trim())
         setUploadedFileInfo(null)
         setWidgetState('IDENTIFYING')
@@ -82,6 +89,7 @@ export default function Widget() {
         setCharCount(text.length)
         if (pasteDebounceRef.current) clearTimeout(pasteDebounceRef.current)
         if (text.trim().length >= 50) {
+          logEvent('text_pasted', { length: text.trim().length })
           setPendingPaste(text.trim())
           setUploadedFileInfo(null)
           setWidgetState('IDENTIFYING')
@@ -102,6 +110,7 @@ export default function Widget() {
     }
     setUploadedFileInfo({ filename: file.name, size: file.size })
     setWidgetState('IDENTIFYING')
+    logEvent('identify_started', { source: 'file' })
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -119,14 +128,18 @@ export default function Widget() {
       if (!idRes.ok) throw new Error('Identify failed')
       const result = await idRes.json()
       setIdentified(result)
+      logEvent('identify_completed', { brand: result.brand, machine: result.machine, jobNumber: result.jobNumber })
+      logEvent('verify_shown')
       setWidgetState('VERIFY')
     } catch (e) {
+      logEvent('identify_failed', { error: e.message })
       setErrorMsg(e.message)
       setWidgetState('ERROR')
     }
   }
 
   async function identifyPaste(text) {
+    logEvent('identify_started', { source: 'paste' })
     try {
       const idRes = await fetch(`${BACKEND_URL}/api/claim/identify`, {
         method: 'POST',
@@ -136,14 +149,18 @@ export default function Widget() {
       if (!idRes.ok) throw new Error('Identify failed')
       const result = await idRes.json()
       setIdentified(result)
+      logEvent('identify_completed', { brand: result.brand, machine: result.machine, jobNumber: result.jobNumber })
+      logEvent('verify_shown')
       setWidgetState('VERIFY')
     } catch (e) {
+      logEvent('identify_failed', { error: e.message })
       setErrorMsg(e.message)
       setWidgetState('ERROR')
     }
   }
 
   async function startFilling() {
+    logEvent('fill_started')
     setWidgetState('FILLING')
     setFillingMessage('Mapping prompt result to portal fields…')
 
@@ -177,7 +194,18 @@ export default function Widget() {
         } catch {}
       }
 
-      const body = { oemConfigId: oemId, promptId: promptId || undefined, identifiedBrand: identified?.brand || undefined }
+      const body = {
+        oemConfigId: oemId,
+        promptId: promptId || undefined,
+        identifiedBrand: identified?.brand || undefined,
+        identifiedMachine: identified?.machine || undefined,
+        identifiedJobNumber: identified?.jobNumber || undefined,
+        userId: getOrCreateUserId(),
+        sessionId: getOrCreateSessionId(),
+        pageHostname: window.location.hostname,
+        pageUrl: window.location.href,
+        rawInput: pendingPaste || undefined,
+      }
       if (uploadedFileInfo?.r2_key) {
         body.files = [{ r2_key: uploadedFileInfo.r2_key, filename: uploadedFileInfo.filename, type: uploadedFileInfo.type || 'pdf', size: uploadedFileInfo.size }]
       } else if (pendingPaste) {
@@ -197,8 +225,11 @@ export default function Widget() {
       setFillingMessage('Filling portal fields…')
       const result = await fillProgressively(portalOutput)
       setFillResult(result)
+      logEvent('fill_completed', { fieldsMapped: result.filled, fieldsTotal: result.total })
+      logEvent('success_shown')
       setWidgetState('SUCCESS')
     } catch (e) {
+      logEvent('error', { message: e.message })
       setErrorMsg(e.message)
       setWidgetState('ERROR')
     }
@@ -260,7 +291,7 @@ export default function Widget() {
   if (widgetState === 'MINIMISED') {
     return (
       <div
-        onClick={() => setWidgetState(prevWidgetState)}
+        onClick={() => { logEvent('widget_expanded'); setWidgetState(prevWidgetState) }}
         title="Expand Machinery Pilot widget"
         style={{
           position: 'fixed',
