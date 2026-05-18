@@ -50,7 +50,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const distPath = path.join(__dirname, '..', 'frontend', 'dist');
+const distPath   = path.join(__dirname, '..', 'frontend', 'dist');
+const publicPath = path.join(__dirname, 'public');
+// Serve /inspect.js and /inspect-help.html before the SPA catch-all
+app.use(express.static(publicPath));
 app.use(express.static(distPath));
 
 const upload = multer({
@@ -1506,6 +1509,77 @@ app.delete('/api/prompts/:id', (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Not found' });
   db.prepare('DELETE FROM custom_prompts WHERE id=?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// ── Telemetry ──────────────────────────────────────────────────────────────
+const ALLOWED_EVENTS = new Set([
+  'widget_loaded', 'widget_expanded', 'widget_minimised',
+  'text_pasted', 'file_uploaded',
+  'identify_started', 'identify_completed', 'identify_failed',
+  'verify_shown',
+  'fill_started', 'fill_completed', 'fill_failed',
+  'field_filled', 'field_edited_by_user',
+  'success_shown', 'reset_clicked', 'minimise_clicked',
+  'feedback_thumbs_up', 'feedback_thumbs_down', 'feedback_text',
+  'error',
+]);
+
+app.post('/api/telemetry/event', (req, res) => {
+  try {
+    const { userId, sessionId, eventType, eventData, pageHostname, pageUrl } = req.body;
+    if (!userId || !eventType) {
+      return res.status(400).json({ error: 'userId and eventType are required' });
+    }
+    if (!ALLOWED_EVENTS.has(eventType)) {
+      return res.status(400).json({ error: `Unknown event type: ${eventType}` });
+    }
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || null;
+    db.prepare(`
+      INSERT INTO telemetry_events
+        (timestamp, user_id, session_id, event_type, event_data, page_hostname, page_url, user_agent, ip_address)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      new Date().toISOString(),
+      String(userId),
+      sessionId || null,
+      eventType,
+      eventData ? JSON.stringify(eventData) : null,
+      pageHostname || null,
+      pageUrl || null,
+      req.headers['user-agent'] || null,
+      ip,
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[Telemetry]', err);
+    res.status(500).json({ error: 'Telemetry write failed' });
+  }
+});
+
+app.get('/api/telemetry/summary/:secret', (req, res) => {
+  if (!process.env.TELEMETRY_ADMIN_SECRET || req.params.secret !== process.env.TELEMETRY_ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  res.json({
+    totalEvents:  db.prepare('SELECT COUNT(*) as c FROM telemetry_events').get().c,
+    uniqueUsers:  db.prepare('SELECT COUNT(DISTINCT user_id) as c FROM telemetry_events').get().c,
+    eventsByType: db.prepare('SELECT event_type, COUNT(*) as count FROM telemetry_events GROUP BY event_type ORDER BY count DESC').all(),
+    eventsByDay:  db.prepare("SELECT DATE(timestamp) as day, COUNT(*) as count FROM telemetry_events GROUP BY day ORDER BY day DESC LIMIT 14").all(),
+    eventsByUser: db.prepare('SELECT user_id, COUNT(*) as count, MIN(timestamp) as first_event, MAX(timestamp) as last_event FROM telemetry_events GROUP BY user_id ORDER BY count DESC').all(),
+    lastEvents:   db.prepare('SELECT timestamp, user_id, event_type, page_hostname FROM telemetry_events ORDER BY id DESC LIMIT 20').all(),
+  });
+});
+
+app.get('/api/telemetry/user/:userId/:secret', (req, res) => {
+  if (!process.env.TELEMETRY_ADMIN_SECRET || req.params.secret !== process.env.TELEMETRY_ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const events = db.prepare(`
+    SELECT timestamp, event_type, event_data, page_hostname, page_url
+    FROM telemetry_events WHERE user_id = ?
+    ORDER BY id DESC LIMIT 200
+  `).all(req.params.userId);
+  res.json({ userId: req.params.userId, events });
 });
 
 // ── Catch-all SPA ─────────────────────────────────────────────────────────

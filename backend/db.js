@@ -238,4 +238,24 @@ Use the define_portal_fields tool to return the field list.`;
 // Migrate legacy "processed" status to "ready"
 db.prepare("UPDATE claims SET status='ready' WHERE status='processed'").run();
 
+// ── Telemetry ──────────────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS telemetry_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp    TEXT    NOT NULL,
+    user_id      TEXT    NOT NULL,
+    session_id   TEXT,
+    event_type   TEXT    NOT NULL,
+    event_data   TEXT,
+    page_hostname TEXT,
+    page_url     TEXT,
+    user_agent   TEXT,
+    ip_address   TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_telemetry_user      ON telemetry_events(user_id);
+  CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry_events(timestamp);
+  CREATE INDEX IF NOT EXISTS idx_telemetry_event_type ON telemetry_events(event_type);
+`);
+
 console.log('[DB] warranty.db ready');

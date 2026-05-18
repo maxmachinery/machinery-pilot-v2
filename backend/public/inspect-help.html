@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Capturing a portal form structure — Machinery Pilot</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f5f7fa;
+      color: #1f2937;
+      line-height: 1.6;
+    }
+    .wrap {
+      max-width: 720px;
+      margin: 48px auto;
+      padding: 0 24px 80px;
+    }
+    .logo {
+      font-size: 13px;
+      font-weight: 600;
+      color: #6b7280;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #0D1F3C;
+      margin: 0 0 8px;
+    }
+    .subtitle {
+      font-size: 16px;
+      color: #4b5563;
+      margin: 0 0 40px;
+    }
+    h2 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0D1F3C;
+      margin: 36px 0 10px;
+    }
+    p { margin: 0 0 14px; }
+    ol { padding-left: 22px; margin: 0 0 14px; }
+    ol li { margin-bottom: 10px; }
+    .step-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: #0D1F3C;
+      color: white;
+      border-radius: 50%;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    .code-block {
+      background: #1e293b;
+      color: #e2e8f0;
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 13px;
+      padding: 14px 18px;
+      border-radius: 8px;
+      overflow-x: auto;
+      white-space: pre;
+      margin: 10px 0 20px;
+      user-select: all;
+      cursor: text;
+    }
+    .copy-btn {
+      display: inline-block;
+      background: #16a34a;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 24px;
+      font-family: inherit;
+    }
+    .copy-btn:hover { background: #15803d; }
+    .note {
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 14px;
+      margin: 16px 0;
+      color: #0c4a6e;
+    }
+    .note strong { color: #0369a1; }
+    .divider {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 36px 0;
+    }
+    ul { padding-left: 20px; margin: 0 0 14px; }
+    ul li { margin-bottom: 6px; }
+    .check { color: #16a34a; font-weight: bold; margin-right: 4px; }
+    .cross  { color: #dc2626; font-weight: bold; margin-right: 4px; }
+    footer {
+      margin-top: 60px;
+      font-size: 13px;
+      color: #9ca3af;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 20px;
+    }
+    footer a { color: #2563eb; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <div class="logo">Machinery Pilot</div>
+
+    <h1>Capturing a portal form structure</h1>
+    <p class="subtitle">How to send us the field layout of your warranty portal in under a minute.</p>
+
+    <h2>What you need</h2>
+    <ul>
+      <li>Google Chrome or Microsoft Edge (any recent version)</li>
+      <li>Access to the Terex warranty portal (or any portal you use for claims)</li>
+      <li>About 2 minutes</li>
+    </ul>
+
+    <hr class="divider" />
+
+    <h2>Steps</h2>
+
+    <p>
+      <span class="step-num">1</span>
+      <strong>Open the portal page</strong> where you submit warranty claims.
+      Make sure the claim form is fully loaded and all the fields are visible on screen.
+    </p>
+
+    <p>
+      <span class="step-num">2</span>
+      <strong>Open browser developer tools</strong> — press <strong>F12</strong>,
+      or right-click anywhere on the page and choose <em>Inspect</em>.
+      Click the <strong>Console</strong> tab at the top of the panel that opens.
+    </p>
+
+    <p>
+      <span class="step-num">3</span>
+      <strong>Paste the line below into the console</strong> and press <strong>Enter</strong>.
+    </p>
+
+    <div class="code-block" id="oneliner">fetch('https://bluegroup.machinerypilot.com/inspect.js').then(r=>r.text()).then(eval)</div>
+    <button class="copy-btn" onclick="copyOneliner()">Copy to clipboard</button>
+
+    <p>
+      A dark download button will appear in the <strong>top-right corner of the page</strong>.
+      Click it to save the capture as a <code>.json</code> file. The data is also
+      automatically copied to your clipboard — you can paste it directly into a reply to Max.
+    </p>
+
+    <div class="note">
+      <strong>Tip:</strong> If the download button doesn't appear, scroll the page to the top-right.
+      It stays visible for 60 seconds, then removes itself automatically.
+    </div>
+
+    <p>
+      <span class="step-num">4</span>
+      <strong>Send the file (or clipboard paste) to Max</strong> at
+      <a href="mailto:hello@machinerypilot.com">hello@machinerypilot.com</a>.
+      That's it.
+    </p>
+
+    <hr class="divider" />
+
+    <h2>What this captures</h2>
+    <ul>
+      <li><span class="check">✓</span> The structure of every form field — field labels, types, IDs, names</li>
+      <li><span class="check">✓</span> The page URL and title</li>
+      <li><span class="check">✓</span> Browser and technology framework information</li>
+      <li><span class="check">✓</span> Field positions on screen (for layout analysis)</li>
+    </ul>
+
+    <h2>What this does NOT capture</h2>
+    <ul>
+      <li><span class="cross">✗</span> Any data you have typed into the form</li>
+      <li><span class="cross">✗</span> Any other browser tabs or pages</li>
+      <li><span class="cross">✗</span> Passwords, cookies, or login credentials</li>
+      <li><span class="cross">✗</span> Anything from outside this single page</li>
+    </ul>
+
+    <div class="note">
+      The script runs entirely in your browser. Nothing is sent anywhere automatically.
+      Only you decide whether to share the result, and only with the person you send the file to.
+    </div>
+
+    <hr class="divider" />
+
+    <h2>If anything goes wrong</h2>
+    <p>
+      If you see an error in the console or the download button doesn't appear,
+      take a screenshot of the console output and email it to
+      <a href="mailto:hello@machinerypilot.com">hello@machinerypilot.com</a>.
+      Max will help you through it.
+    </p>
+
+    <footer>
+      <a href="https://machinerypilot.com">machinerypilot.com</a> &nbsp;·&nbsp;
+      <a href="mailto:hello@machinerypilot.com">hello@machinerypilot.com</a>
+    </footer>
+
+  </div>
+
+  <script>
+    function copyOneliner() {
+      var text = document.getElementById('oneliner').textContent.trim();
+      navigator.clipboard.writeText(text).then(function() {
+        var btn = document.querySelector('.copy-btn');
+        btn.textContent = 'Copied ✓';
+        btn.style.background = '#0D1F3C';
+        setTimeout(function() {
+          btn.textContent = 'Copy to clipboard';
+          btn.style.background = '#16a34a';
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
