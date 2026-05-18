@@ -8,6 +8,7 @@ import fs from 'fs';
 import { createRequire } from 'module';
 import { db } from './db.js';
 import { redactPII } from './redact.js';
+import { formatLondonTime, formatLondonRelative } from './format.js';
 import crypto  from 'crypto';
 import path    from 'path';
 import { fileURLToPath } from 'url';
@@ -1626,13 +1627,17 @@ app.get('/api/telemetry/summary/:secret', (req, res) => {
   if (!process.env.TELEMETRY_ADMIN_SECRET || req.params.secret !== process.env.TELEMETRY_ADMIN_SECRET) {
     return res.status(403).json({ error: 'Forbidden' });
   }
+  const eventsByUser = db.prepare('SELECT user_id, COUNT(*) as count, MIN(timestamp) as first_event, MAX(timestamp) as last_event FROM telemetry_events GROUP BY user_id ORDER BY count DESC').all()
+    .map(r => ({ ...r, first_event_london: formatLondonTime(r.first_event), last_event_london: formatLondonTime(r.last_event) }));
+  const lastEvents = db.prepare('SELECT timestamp, user_id, event_type, page_hostname FROM telemetry_events ORDER BY id DESC LIMIT 20').all()
+    .map(r => ({ ...r, timestamp_london: formatLondonTime(r.timestamp) }));
   res.json({
     totalEvents:  db.prepare('SELECT COUNT(*) as c FROM telemetry_events').get().c,
     uniqueUsers:  db.prepare('SELECT COUNT(DISTINCT user_id) as c FROM telemetry_events').get().c,
     eventsByType: db.prepare('SELECT event_type, COUNT(*) as count FROM telemetry_events GROUP BY event_type ORDER BY count DESC').all(),
     eventsByDay:  db.prepare("SELECT DATE(timestamp) as day, COUNT(*) as count FROM telemetry_events GROUP BY day ORDER BY day DESC LIMIT 14").all(),
-    eventsByUser: db.prepare('SELECT user_id, COUNT(*) as count, MIN(timestamp) as first_event, MAX(timestamp) as last_event FROM telemetry_events GROUP BY user_id ORDER BY count DESC').all(),
-    lastEvents:   db.prepare('SELECT timestamp, user_id, event_type, page_hostname FROM telemetry_events ORDER BY id DESC LIMIT 20').all(),
+    eventsByUser,
+    lastEvents,
   });
 });
 
@@ -1672,7 +1677,8 @@ app.get('/api/admin/export/claims/:secret', (req, res) => {
     return res.status(403).send('Forbidden');
   }
   const since = req.query.since || '1970-01-01';
-  const rows = db.prepare(`SELECT * FROM claim_logs WHERE timestamp >= ? ORDER BY timestamp DESC`).all(since);
+  const rows = db.prepare(`SELECT * FROM claim_logs WHERE timestamp >= ? ORDER BY timestamp DESC`).all(since)
+    .map(r => ({ timestamp: r.timestamp, timestamp_london: formatLondonTime(r.timestamp), ...r }));
   const csv = buildCsv(rows);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="claims-${new Date().toISOString().slice(0, 10)}.csv"`);
@@ -1684,11 +1690,277 @@ app.get('/api/admin/export/events/:secret', (req, res) => {
     return res.status(403).send('Forbidden');
   }
   const since = req.query.since || '1970-01-01';
-  const rows = db.prepare(`SELECT * FROM telemetry_events WHERE timestamp >= ? ORDER BY timestamp DESC`).all(since);
+  const rows = db.prepare(`SELECT * FROM telemetry_events WHERE timestamp >= ? ORDER BY timestamp DESC`).all(since)
+    .map(r => ({ timestamp: r.timestamp, timestamp_london: formatLondonTime(r.timestamp), ...r }));
   const csv = buildCsv(rows);
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="events-${new Date().toISOString().slice(0, 10)}.csv"`);
   res.send(csv);
+});
+
+// ── Usage Dashboard ────────────────────────────────────────────────────────
+
+function renderDashboardHtml({ stats, last7Days, recentClaims, recentEvents, secret, lastUpdated }) {
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  const statCards = [
+    { label: 'Claims today',    value: stats.claimsToday,      unit: '' },
+    { label: 'Unique users',    value: stats.uniqueUsersToday,  unit: '' },
+    { label: 'Avg fill time',   value: (stats.avgProcessing/1000).toFixed(1), unit: 's' },
+    { label: 'Success rate',    value: stats.successRate,       unit: '%' },
+  ].map(c => `
+    <div class="card">
+      <div class="card-label">${esc(c.label)}</div>
+      <div class="card-value">${esc(c.value)}${esc(c.unit)}</div>
+    </div>`).join('');
+
+  const dayRows = last7Days.map(d => `
+    <tr>
+      <td>${esc(d.day)}</td>
+      <td class="num">${esc(d.claims)}</td>
+      <td class="num">${esc(d.events)}</td>
+      <td class="num">${esc(d.uniqueUsers)}</td>
+    </tr>`).join('') || '<tr><td colspan="4" class="empty">No data yet</td></tr>';
+
+  const claimRows = recentClaims.map((r, i) => {
+    const status = r.success ? '<span class="badge ok">✓</span>' : '<span class="badge err">✗</span>';
+    const fields = r.fields_total_count ? `${r.fields_mapped_count}/${r.fields_total_count}` : '—';
+    const mappingsFormatted = (() => {
+      try { return JSON.stringify(JSON.parse(r.mappings_json), null, 2); } catch { return r.mappings_json || ''; }
+    })();
+    return `
+    <tr class="claim-row" data-idx="${i}" style="cursor:pointer" onclick="toggleClaim(${i})">
+      <td class="mono ts" title="${esc(r.timestamp_london)}">${esc(r.timestamp_relative)}</td>
+      <td>${esc(r.identified_brand || '—')}</td>
+      <td>${esc(r.identified_machine || '—')}</td>
+      <td class="num">${esc(fields)}</td>
+      <td>${status}</td>
+      <td class="preview">${esc(r.raw_input_preview)}</td>
+    </tr>
+    <tr id="claim-detail-${i}" class="detail-row" style="display:none">
+      <td colspan="6">
+        <div class="detail-grid">
+          <div class="detail-section">
+            <div class="detail-title">Raw input (redacted)</div>
+            <pre class="detail-pre">${esc(r.raw_input || '(none)')}</pre>
+          </div>
+          <div class="detail-section">
+            <div class="detail-title">Mapped fields</div>
+            <pre class="detail-pre">${esc(mappingsFormatted)}</pre>
+          </div>
+          <div class="detail-section">
+            <div class="detail-title">Metadata</div>
+            <table class="meta-table">
+              <tr><td>User</td><td class="mono">${esc(r.user_id)}</td></tr>
+              <tr><td>Session</td><td class="mono">${esc(r.session_id)}</td></tr>
+              <tr><td>Time (London)</td><td class="mono">${esc(r.timestamp_london)}</td></tr>
+              <tr><td>Processing</td><td class="mono">${esc(r.processing_time_ms)}ms</td></tr>
+              <tr><td>Page</td><td class="mono">${esc(r.page_url || r.page_hostname || '—')}</td></tr>
+              <tr><td>Job number</td><td class="mono">${esc(r.identified_job_number || '—')}</td></tr>
+              ${r.error_message ? `<tr><td>Error</td><td class="mono err-text">${esc(r.error_message)}</td></tr>` : ''}
+            </table>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" class="empty">No claims yet</td></tr>';
+
+  const eventRows = recentEvents.map(r => `
+    <tr>
+      <td class="mono ts" title="${esc(r.timestamp_london)}">${esc(r.timestamp_relative)}</td>
+      <td class="mono">${esc(r.user_id_short)}</td>
+      <td><span class="evt-type">${esc(r.event_type)}</span></td>
+      <td class="secondary">${esc(r.page_hostname || '—')}</td>
+    </tr>`).join('') || '<tr><td colspan="4" class="empty">No events yet</td></tr>';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta http-equiv="refresh" content="60"/>
+  <title>⚡ Machinery Pilot — Usage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: #f5f7fa; color: #1f2937; font-size: 14px; line-height: 1.5; }
+    .page { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+
+    /* Header */
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 10px; }
+    .header-title { font-size: 20px; font-weight: 700; color: #0D1F3C; }
+    .header-meta { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 12px; }
+    .refresh-btn { background: #0D1F3C; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .refresh-btn:hover { background: #162d4a; }
+
+    /* Stat cards */
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 32px; }
+    @media (max-width: 600px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+    .card { background: #fff; border-radius: 10px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .card-label { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+    .card-value { font-size: 28px; font-weight: 700; color: #0D1F3C; }
+
+    /* Sections */
+    .section { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px; overflow-x: auto; }
+    .section-title { font-size: 13px; font-weight: 700; color: #0D1F3C; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 16px; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; }
+    th { font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; text-align: left; padding: 0 10px 8px; border-bottom: 1px solid #e5e7eb; }
+    td { padding: 9px 10px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .mono { font-family: 'Menlo', 'Consolas', monospace; font-size: 12px; }
+    .ts { white-space: nowrap; color: #4b5563; }
+    .secondary { color: #6b7280; font-size: 12px; }
+    .preview { color: #6b7280; font-size: 12px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty { color: #9ca3af; font-style: italic; padding: 20px 10px; text-align: center; }
+
+    /* Badges */
+    .badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+    .badge.ok  { background: #dcfce7; color: #16a34a; }
+    .badge.err { background: #fee2e2; color: #dc2626; }
+    .evt-type { font-family: 'Menlo', 'Consolas', monospace; font-size: 11px; background: #f1f5f9; color: #334155; padding: 2px 6px; border-radius: 4px; }
+    .err-text { color: #dc2626; }
+
+    /* Claim expand */
+    .claim-row:hover td { background: #f9fafb; }
+    .detail-row td { background: #f8fafc; padding: 16px; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    @media (max-width: 800px) { .detail-grid { grid-template-columns: 1fr; } }
+    .detail-title { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+    .detail-pre { font-family: 'Menlo','Consolas',monospace; font-size: 11px; white-space: pre-wrap; word-break: break-word; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; max-height: 260px; overflow-y: auto; color: #1f2937; }
+    .meta-table td { padding: 4px 8px; font-size: 12px; border: none; }
+    .meta-table td:first-child { color: #6b7280; font-weight: 500; white-space: nowrap; }
+
+    /* Footer buttons */
+    .footer { margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+    .export-btn { display: inline-block; background: #0D1F3C; color: #fff; text-decoration: none; border-radius: 7px; padding: 10px 20px; font-size: 13px; font-weight: 600; }
+    .export-btn:hover { background: #162d4a; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="header-title">⚡ Machinery Pilot — Usage</div>
+      <div class="header-meta">
+        <span>Last updated: ${esc(lastUpdated)}</span>
+        <button class="refresh-btn" onclick="location.reload()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div class="cards">${statCards}</div>
+
+    <div class="section">
+      <div class="section-title">Last 7 days</div>
+      <table>
+        <thead><tr><th>Day</th><th class="num">Claims</th><th class="num">Events</th><th class="num">Unique users</th></tr></thead>
+        <tbody>${dayRows}</tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Recent claims (last 20) — click row to expand</div>
+      <table>
+        <thead><tr><th>Time</th><th>Brand</th><th>Machine</th><th class="num">Fields</th><th>Status</th><th>Input preview</th></tr></thead>
+        <tbody>${claimRows}</tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Recent events (last 50)</div>
+      <table>
+        <thead><tr><th>Time</th><th>User</th><th>Event</th><th>Page</th></tr></thead>
+        <tbody>${eventRows}</tbody>
+      </table>
+    </div>
+
+    <div class="footer">
+      <a class="export-btn" href="/api/admin/export/claims/${esc(secret)}" download>↓ Download claims CSV</a>
+      <a class="export-btn" href="/api/admin/export/events/${esc(secret)}" download>↓ Download events CSV</a>
+    </div>
+  </div>
+
+  <script>
+    function toggleClaim(idx) {
+      const row = document.getElementById('claim-detail-' + idx);
+      if (!row) return;
+      row.style.display = row.style.display === 'none' ? '' : 'none';
+    }
+  </script>
+</body>
+</html>`;
+}
+
+app.get('/admin/usage/:secret', (req, res) => {
+  if (req.params.secret !== process.env.TELEMETRY_ADMIN_SECRET) {
+    return res.status(403).send('<h2>403 Forbidden</h2>');
+  }
+
+  const now = new Date();
+  const londonNow = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/London' }));
+  const todayStartLondon = new Date(londonNow.getFullYear(), londonNow.getMonth(), londonNow.getDate());
+  const todayStartUTC = todayStartLondon.toISOString();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const claimsToday      = db.prepare('SELECT COUNT(*) as c FROM claim_logs WHERE timestamp >= ?').get(todayStartUTC).c;
+  const uniqueUsersToday = db.prepare('SELECT COUNT(DISTINCT user_id) as c FROM claim_logs WHERE timestamp >= ?').get(todayStartUTC).c;
+
+  const avgRow = db.prepare('SELECT AVG(processing_time_ms) as avg FROM claim_logs WHERE timestamp >= ? AND success = 1').get(sevenDaysAgo);
+  const avgProcessing = avgRow.avg || 0;
+
+  const statsRow = db.prepare('SELECT SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successes, COUNT(*) as total FROM claim_logs WHERE timestamp >= ?').get(sevenDaysAgo);
+  const successRate = statsRow.total > 0 ? Math.round((statsRow.successes / statsRow.total) * 100) : 0;
+
+  // 7-day breakdown (JS-side tz grouping)
+  const claimsSince = db.prepare('SELECT timestamp, user_id FROM claim_logs WHERE timestamp >= ? ORDER BY timestamp DESC').all(sevenDaysAgo);
+  const eventsSince = db.prepare('SELECT timestamp, user_id FROM telemetry_events WHERE timestamp >= ? ORDER BY timestamp DESC').all(sevenDaysAgo);
+
+  const byDay = {};
+  // Generate labels for last 7 London days so empty days show
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(londonNow.getFullYear(), londonNow.getMonth(), londonNow.getDate() - i);
+    const label = d.toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short' });
+    byDay[label] = { claims: 0, events: 0, users: new Set() };
+  }
+  claimsSince.forEach(r => {
+    const lbl = new Date(r.timestamp).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short' });
+    if (byDay[lbl]) { byDay[lbl].claims++; byDay[lbl].users.add(r.user_id); }
+  });
+  eventsSince.forEach(r => {
+    const lbl = new Date(r.timestamp).toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: '2-digit', month: 'short' });
+    if (byDay[lbl]) { byDay[lbl].events++; byDay[lbl].users.add(r.user_id); }
+  });
+  const last7Days = Object.entries(byDay).map(([day, d]) => ({ day, claims: d.claims, events: d.events, uniqueUsers: d.users.size }));
+
+  // Recent claims
+  const recentClaims = db.prepare('SELECT * FROM claim_logs ORDER BY id DESC LIMIT 20').all().map(r => ({
+    ...r,
+    timestamp_relative: formatLondonRelative(r.timestamp),
+    timestamp_london:   formatLondonTime(r.timestamp),
+    raw_input_preview:  r.raw_input ? r.raw_input.slice(0, 80).replace(/\n/g, ' ') + (r.raw_input.length > 80 ? '…' : '') : '',
+  }));
+
+  // Recent events
+  const recentEvents = db.prepare('SELECT * FROM telemetry_events ORDER BY id DESC LIMIT 50').all().map(r => ({
+    ...r,
+    timestamp_relative: formatLondonRelative(r.timestamp),
+    timestamp_london:   formatLondonTime(r.timestamp),
+    user_id_short:      r.user_id ? r.user_id.slice(-6) : '',
+  }));
+
+  const html = renderDashboardHtml({
+    stats: { claimsToday, uniqueUsersToday, avgProcessing, successRate },
+    last7Days,
+    recentClaims,
+    recentEvents,
+    secret: req.params.secret,
+    lastUpdated: formatLondonTime(now.toISOString()),
+  });
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(html);
 });
 
 // ── Catch-all SPA ─────────────────────────────────────────────────────────
